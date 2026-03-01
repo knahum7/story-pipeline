@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { Download, RefreshCw, ChevronRight } from "lucide-react";
+import { useState, useCallback, useEffect, useRef } from "react";
+import { Download, RefreshCw, ChevronRight, Clock } from "lucide-react";
+import Link from "next/link";
 import StoryUploader from "@/components/StoryUploader";
 import StreamingOutput from "@/components/StreamingOutput";
 import ResultsViewer from "@/components/ResultsViewer";
@@ -15,6 +16,43 @@ export default function Home() {
   const [view, setView] = useState<"json" | "visual">("visual");
   const [isExtracting, setIsExtracting] = useState(false);
   const [modelInfo, setModelInfo] = useState<string | null>(null);
+  const [savedId, setSavedId] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const sourceTypeRef = useRef<"text" | "images">("text");
+  const modelUsedRef = useRef<string>("claude");
+  const storyCharCountRef = useRef<number>(0);
+
+  useEffect(() => {
+    if (status !== "done" || !parsedData || !rawText || savedId) return;
+
+    const save = async () => {
+      try {
+        const res = await fetch("/api/pipelines", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            pipelineData: parsedData,
+            rawJson: rawText,
+            sourceType: sourceTypeRef.current,
+            modelUsed: modelUsedRef.current,
+            storyCharCount: storyCharCountRef.current,
+          }),
+        });
+        if (res.ok) {
+          const { id } = await res.json();
+          setSavedId(id);
+        } else {
+          const err = await res.json();
+          setSaveError(err.error || "Failed to save");
+        }
+      } catch {
+        setSaveError("Failed to save pipeline");
+      }
+    };
+
+    save();
+  }, [status, parsedData, rawText, savedId]);
 
   const processStory = useCallback(async (storyText: string) => {
     setStatus("processing");
@@ -22,6 +60,11 @@ export default function Home() {
     setParsedData(null);
     setError(null);
     setModelInfo(null);
+    setSavedId(null);
+    setSaveError(null);
+    storyCharCountRef.current = storyText.length;
+    modelUsedRef.current = "claude";
+    sourceTypeRef.current = "text";
 
     try {
       const response = await fetch("/api/parse-story", {
@@ -55,6 +98,7 @@ export default function Home() {
               if (data.error) throw new Error(data.error);
               if (data.fallback) {
                 setModelInfo(data.reason);
+                modelUsedRef.current = "gpt-4o";
                 accumulated = "";
                 setRawText("");
                 continue;
@@ -95,6 +139,7 @@ export default function Home() {
   const processImages = useCallback(async (files: File[]) => {
     setIsExtracting(true);
     setError(null);
+    sourceTypeRef.current = "images";
 
     try {
       const formData = new FormData();
@@ -143,6 +188,8 @@ export default function Home() {
     setParsedData(null);
     setError(null);
     setModelInfo(null);
+    setSavedId(null);
+    setSaveError(null);
   };
 
   const isProcessing = status === "processing" || status === "streaming";
@@ -183,9 +230,18 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2 text-xs text-parchment/30">
-            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-            <span>Powered by Claude</span>
+          <div className="flex items-center gap-4">
+            <Link
+              href="/history"
+              className="flex items-center gap-1.5 text-xs text-parchment/40 hover:text-parchment/70 transition-colors"
+            >
+              <Clock size={13} />
+              <span>History</span>
+            </Link>
+            <div className="flex items-center gap-2 text-xs text-parchment/30">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+              <span>Powered by Claude</span>
+            </div>
           </div>
         </div>
       </header>
@@ -319,7 +375,13 @@ export default function Home() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-3">
+                {savedId && (
+                  <span className="text-xs text-green-500/70">Saved</span>
+                )}
+                {saveError && (
+                  <span className="text-xs text-red-400/70">Save failed</span>
+                )}
                 <button
                   onClick={downloadJSON}
                   className="flex items-center gap-2 px-4 py-2 rounded-xl bg-ink-soft border border-ink-muted hover:border-amber-film/50 text-parchment/60 hover:text-parchment text-sm transition-all"
