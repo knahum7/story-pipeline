@@ -14,12 +14,14 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<"json" | "visual">("visual");
   const [isExtracting, setIsExtracting] = useState(false);
+  const [modelInfo, setModelInfo] = useState<string | null>(null);
 
   const processStory = useCallback(async (storyText: string) => {
     setStatus("processing");
     setRawText("");
     setParsedData(null);
     setError(null);
+    setModelInfo(null);
 
     try {
       const response = await fetch("/api/parse-story", {
@@ -51,6 +53,12 @@ export default function Home() {
             try {
               const data = JSON.parse(line.slice(6));
               if (data.error) throw new Error(data.error);
+              if (data.fallback) {
+                setModelInfo(data.reason);
+                accumulated = "";
+                setRawText("");
+                continue;
+              }
               if (data.done) {
                 try {
                   const parsed = JSON.parse(accumulated);
@@ -131,6 +139,7 @@ export default function Home() {
     setRawText("");
     setParsedData(null);
     setError(null);
+    setModelInfo(null);
   };
 
   const isProcessing = status === "processing" || status === "streaming";
@@ -238,9 +247,12 @@ export default function Home() {
                 </h3>
                 <p className="text-xs text-parchment/40 mt-0.5">
                   {isExtracting
-                    ? "Reading your pages with Claude Vision"
+                    ? "Reading your pages with Google Vision"
                     : "This usually takes 30–90 seconds"}
                 </p>
+                {modelInfo && (
+                  <p className="text-xs text-amber-film mt-1">{modelInfo}</p>
+                )}
               </div>
               <div className="flex gap-2">
                 {rawText && (

@@ -1,21 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
-
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
+import vision from "@google-cloud/vision";
 
 const SUPPORTED_TYPES = [
   "image/jpeg",
   "image/png",
   "image/gif",
   "image/webp",
-] as const;
-
-type ImageMediaType = (typeof SUPPORTED_TYPES)[number];
+];
 
 const MAX_IMAGES = 20;
 const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB per image
+
+function getVisionClient() {
+  const credentialsJson = process.env.GOOGLE_CLOUD_CREDENTIALS_JSON;
+  if (!credentialsJson) {
+    throw new Error("GOOGLE_CLOUD_CREDENTIALS_JSON environment variable is not set");
+  }
+
+  const credentials = JSON.parse(credentialsJson);
+  return new vision.ImageAnnotatorClient({ credentials });
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -36,10 +40,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const imageBlocks: Anthropic.Messages.ImageBlockParam[] = [];
-
     for (const file of files) {
-      if (!SUPPORTED_TYPES.includes(file.type as ImageMediaType)) {
+      if (!SUPPORTED_TYPES.includes(file.type)) {
         return NextResponse.json(
           { error: `Unsupported file type: ${file.type}. Use JPEG, PNG, GIF, or WebP.` },
           { status: 400 }
@@ -52,46 +54,34 @@ export async function POST(req: NextRequest) {
           { status: 400 }
         );
       }
-
-      const buffer = await file.arrayBuffer();
-      const base64 = Buffer.from(buffer).toString("base64");
-
-      imageBlocks.push({
-        type: "image",
-        source: {
-          type: "base64",
-          media_type: file.type as ImageMediaType,
-          data: base64,
-        },
-      });
     }
 
-    const response = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 16000,
-      messages: [
-        {
-          role: "user",
-          content: [
-            ...imageBlocks,
-            {
-              type: "text",
-              text: `Extract ALL text from ${files.length > 1 ? "these book/story pages" : "this book/story page"} exactly as written. Rules:
-- Preserve paragraph breaks and dialogue formatting
-- Maintain the original reading order across all pages
-- Include ALL text — nothing should be omitted
-- Do NOT add commentary, headers, or labels
-- Output ONLY the extracted story text, nothing else`,
-            },
-          ],
-        },
-      ],
-    });
+    const client = getVisionClient();
 
-    const extractedText = response.content
-      .filter((block): block is Anthropic.Messages.TextBlock => block.type === "text")
-      .map((block) => block.text)
-      .join("\n");
+    const ocrResults = await Promise.all(
+      files.map(async (file) => {
+        const buffer = Buffer.from(await file.arrayBuffer());
+
+        const [result] = await client.documentTextDetection({
+          image: { content: buffer },
+        });
+
+        const fullText = result.fullTextAnnotation?.text || "";
+        return { name: file.name, text: fullText };
+      })
+    );
+
+    const extractedText = ocrResults
+      .map((r) => r.text.trim())
+      .filter(Boolean)
+      .join("\n\n");
+
+    if (!extractedText) {
+      return NextResponse.json(
+        { error: "No text could be extracted from the uploaded images. Try clearer photos." },
+        { status: 422 }
+      );
+    }
 
     return NextResponse.json({
       text: extractedText,
