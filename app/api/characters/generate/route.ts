@@ -12,10 +12,13 @@ interface FalImage {
   content_type?: string;
 }
 
-interface FalResult {
+interface FalResultData {
   images?: FalImage[];
-  data?: FalImage[];
   seed?: number;
+}
+
+interface FalSubscribeResult {
+  data: FalResultData;
   requestId?: string;
 }
 
@@ -63,11 +66,16 @@ export async function POST(req: NextRequest) {
         image_size: promptType === "reference_sheet" ? "landscape_16_9" : "portrait_4_3",
         num_images: 1,
       },
-    })) as FalResult;
+    })) as FalSubscribeResult;
 
-    const images = result.images || result.data || [];
+    console.log(
+      `[characters] fal.ai response keys: ${Object.keys(result).join(", ")}`,
+      result.data ? `data keys: ${Object.keys(result.data).join(", ")}` : "no data"
+    );
+
+    const images = result.data?.images || [];
     if (!images.length || !images[0].url) {
-      console.error("[characters] No image returned from fal.ai");
+      console.error("[characters] No image returned from fal.ai — full response:", JSON.stringify(result).slice(0, 500));
       return NextResponse.json(
         { error: "No image was generated. Try a different prompt or model." },
         { status: 502 }
@@ -77,7 +85,7 @@ export async function POST(req: NextRequest) {
     const falImageUrl = images[0].url;
     const imageWidth = images[0].width || null;
     const imageHeight = images[0].height || null;
-    const seed = result.seed || null;
+    const seed = result.data?.seed || null;
 
     console.log(
       `[characters] fal.ai returned image in ${((Date.now() - startTime) / 1000).toFixed(1)}s — ${imageWidth}x${imageHeight}`
@@ -130,7 +138,7 @@ export async function POST(req: NextRequest) {
         prompt,
         model_used: model,
         image_url: imageUrl,
-        fal_request_id: result.requestId || null,
+        fal_request_id: result.requestId ?? null,
         width: imageWidth,
         height: imageHeight,
         seed,
