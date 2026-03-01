@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS "public"."characters" (
     "fal_request_id" "text",
     "width" integer,
     "height" integer,
-    "seed" bigint,
+    "seed" "text",
     "created_at" timestamp with time zone DEFAULT "now"()
 );
 
@@ -103,7 +103,7 @@ CREATE TABLE IF NOT EXISTS "public"."scene_images" (
     "image_url" "text" NOT NULL,
     "width" integer,
     "height" integer,
-    "seed" bigint,
+    "seed" "text",
     "fal_request_id" "text",
     "created_at" timestamp with time zone DEFAULT "now"()
 );

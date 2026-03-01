@@ -97,7 +97,7 @@ export async function POST(req: NextRequest) {
     const falImageUrl = images[0].url;
     const imageWidth = images[0].width || null;
     const imageHeight = images[0].height || null;
-    const seed = result.data?.seed || null;
+    const seed = result.data?.seed != null ? String(result.data.seed) : null;
 
     console.log(
       `[scenes] fal.ai returned image in ${((Date.now() - startTime) / 1000).toFixed(1)}s — ${imageWidth}x${imageHeight}`
