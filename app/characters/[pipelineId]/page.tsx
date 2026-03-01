@@ -212,15 +212,47 @@ export default function CharactersPage() {
           throw new Error(err.error || "Training failed");
         }
         const data = await res.json();
-        setLoras((prev) => ({ ...prev, [char.id]: data }));
+        setLoras((prev) => ({
+          ...prev,
+          [char.id]: { ...data, status: "training" },
+        }));
       } catch (err) {
         alert(err instanceof Error ? err.message : t("generation_failed"));
-      } finally {
         setTrainingLora((prev) => ({ ...prev, [char.id]: false }));
       }
     },
     [pipelineId, t]
   );
+
+  // Poll for training status when any LoRA is in "training" state
+  useEffect(() => {
+    const trainingChars = Object.entries(loras)
+      .filter(([, l]) => l.status === "training")
+      .map(([charId]) => charId);
+
+    if (trainingChars.length === 0) return;
+
+    const interval = setInterval(async () => {
+      for (const charId of trainingChars) {
+        try {
+          const res = await fetch(
+            `/api/characters/train-lora/status?pipeline_id=${pipelineId}&character_id=${charId}`
+          );
+          if (!res.ok) continue;
+          const data = await res.json();
+
+          if (data.status === "ready" || data.status === "failed") {
+            setLoras((prev) => ({ ...prev, [charId]: data }));
+            setTrainingLora((prev) => ({ ...prev, [charId]: false }));
+          }
+        } catch {
+          // silently retry on next interval
+        }
+      }
+    }, 15000);
+
+    return () => clearInterval(interval);
+  }, [loras, pipelineId]);
 
   const deleteImage = useCallback(
     async (id: string) => {

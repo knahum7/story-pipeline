@@ -6,14 +6,6 @@ import { PassThrough } from "stream";
 
 fal.config({ credentials: () => process.env.FAL_KEY || "" });
 
-interface FalLoraResult {
-  data: {
-    diffusers_lora_file?: { url: string };
-    config_file?: { url: string };
-  };
-  requestId?: string;
-}
-
 async function createZipFromUrls(imageUrls: string[]): Promise<Buffer> {
   const archive = archiver("zip", { zlib: { level: 0 } });
   const passThrough = new PassThrough();
@@ -137,6 +129,22 @@ export async function POST(req: NextRequest) {
     const zipUrl = publicUrlData.publicUrl;
     console.log(`[train-lora] Zip uploaded: ${zipUrl}`);
 
+    // Submit to fal.ai queue (returns immediately)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { request_id } = await (fal.queue as any).submit(
+      "fal-ai/flux-lora-portrait-trainer",
+      {
+        input: {
+          images_data_url: zipUrl,
+          trigger_word: triggerWord,
+          steps: 1000,
+          is_style: false,
+        },
+      }
+    );
+
+    console.log(`[train-lora] Queued training for "${characterName}", request_id: ${request_id}`);
+
     const { data: loraRow, error: insertError } = await supabase
       .from("character_loras")
       .insert({
@@ -146,6 +154,7 @@ export async function POST(req: NextRequest) {
         lora_url: "",
         training_images_count: imageUrls.length,
         status: "training",
+        fal_request_id: request_id,
       })
       .select()
       .single();
@@ -158,95 +167,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const startTime = Date.now();
-    console.log(
-      `[train-lora] Starting fal.ai training for "${characterName}", trigger: "${triggerWord}"`
+    return NextResponse.json(
+      {
+        id: loraRow.id,
+        character_id: characterId,
+        trigger_word: triggerWord,
+        status: "training",
+        request_id,
+        training_images_count: imageUrls.length,
+      },
+      { status: 202 }
     );
-
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result = (await (fal as any).subscribe(
-        "fal-ai/flux-lora-portrait-trainer",
-        {
-          input: {
-            images_data_url: zipUrl,
-            trigger_word: triggerWord,
-            steps: 1000,
-            is_style: false,
-          },
-        }
-      )) as FalLoraResult;
-
-      console.log(
-        `[train-lora] fal.ai response keys: ${Object.keys(result).join(", ")}`,
-        result.data
-          ? `data keys: ${Object.keys(result.data).join(", ")}`
-          : "no data"
-      );
-
-      const loraUrl = result.data?.diffusers_lora_file?.url;
-
-      if (!loraUrl) {
-        console.error(
-          "[train-lora] No LoRA URL in response:",
-          JSON.stringify(result).slice(0, 500)
-        );
-        await supabase
-          .from("character_loras")
-          .update({ status: "failed" })
-          .eq("id", loraRow.id);
-
-        return NextResponse.json(
-          { error: "Training completed but no LoRA file was returned" },
-          { status: 502 }
-        );
-      }
-
-      const { error: updateError } = await supabase
-        .from("character_loras")
-        .update({
-          lora_url: loraUrl,
-          status: "ready",
-          fal_request_id: result.requestId ?? null,
-        })
-        .eq("id", loraRow.id);
-
-      if (updateError) {
-        console.error("[train-lora] DB update error:", updateError.message);
-      }
-
-      console.log(
-        `[train-lora] Training complete for "${characterName}" in ${((Date.now() - startTime) / 1000).toFixed(1)}s — ${loraUrl}`
-      );
-
-      return NextResponse.json(
-        {
-          id: loraRow.id,
-          character_id: characterId,
-          trigger_word: triggerWord,
-          lora_url: loraUrl,
-          status: "ready",
-          training_images_count: imageUrls.length,
-        },
-        { status: 201 }
-      );
-    } catch (trainErr) {
-      console.error(
-        "[train-lora] Training failed:",
-        trainErr instanceof Error ? trainErr.message : trainErr
-      );
-      await supabase
-        .from("character_loras")
-        .update({ status: "failed" })
-        .eq("id", loraRow.id);
-
-      return NextResponse.json(
-        {
-          error: `Training failed: ${trainErr instanceof Error ? trainErr.message : "Unknown error"}`,
-        },
-        { status: 502 }
-      );
-    }
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     console.error("[train-lora] Error:", message);
