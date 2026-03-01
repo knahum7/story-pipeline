@@ -1,0 +1,473 @@
+{
+  "story": {
+    "title": "Paramour",
+    "author": "Jennifer Haigh",
+    "source": "Ploughshares",
+    "genre": "Literary Fiction",
+    "tone": "melancholic, bittersweet, nostalgic, tension-laden",
+    "art_style_direction": "Warm muted tones, cinematic realism, soft shadows, intimate close-ups, late 1990s New York aesthetic. Think Atonement meets Lost in Translation visual palette."
+  },
+
+  "characters": [
+    {
+      "id": "char_01",
+      "name": "Christine Mooney",
+      "role": "protagonist",
+      "age_current": "late 30s / early 40s",
+      "age_flashback": "19 (college sophomore)",
+      "physical_description": {
+        "hair": "blonde",
+        "build": "slim",
+        "style": "four-inch heels thin as pencils, sophisticated dresser",
+        "overall_look": "elegant, restrained, a woman carrying quiet sadness behind composed exterior"
+      },
+      "personality": "intelligent, introspective, romantically wounded, self-aware but still susceptible to Ivan's pull",
+      "backstory": "Former playwriting student of Ivan's. Had a non-sexual but deeply intimate posing relationship with him. Best friend Tommy died of AIDS. Now a French lit professor on a visiting appointment. Has moved a half-dozen times since college — France (Fulbright), grad school, Chicago, now California.",
+      "voice_profile": {
+        "tone": "measured, dry wit, quiet vulnerability underneath",
+        "elevenlabs_suggestion": "Rachel or Bella — warm, intelligent, slightly melancholic American female"
+      },
+      "image_generation_prompt": "Portrait of Christine Mooney, a blonde woman in her late 30s, elegant and quietly beautiful, wearing sophisticated evening wear, four-inch stiletto heels, composed expression with hint of sadness in her eyes, cinematic lighting, warm muted tones, photorealistic, sharp focus on face"
+    },
+    {
+      "id": "char_02",
+      "name": "Ivan Borysenko",
+      "role": "antagonist / love interest",
+      "age_current": "60s",
+      "age_flashback": "40s (visiting professor)",
+      "physical_description": {
+        "hair": "longish, wavy, now more gray than black",
+        "eyes": "avid dark eyes",
+        "build": "commanding, charismatic presence",
+        "style": "theatrical, distinguished older man, European flair",
+        "overall_look": "handsome aging theater director, magnetic, predatory charm"
+      },
+      "personality": "charismatic, narcissistic, manipulative, brilliant, uses admiration as currency, deeply self-centered",
+      "backstory": "Ukrainian-born playwright/director. Visiting professor who seduced Christine when she was 19. Married to Beth for 20 years. Father of Pia. Famous in New York theater world. Known to have always had an eye for blondes. Wife Beth pragmatically allowed him certain freedoms — 'look but don't touch.'",
+      "voice_profile": {
+        "tone": "warm baritone, slight Ukrainian/Eastern European accent, seductive authority",
+        "elevenlabs_suggestion": "Antoni or Arnold — deep, accented, commanding European male"
+      },
+      "image_generation_prompt": "Portrait of Ivan Borysenko, Ukrainian-born theater director in his 60s, longish wavy hair more gray than black, dark avid eyes, handsome weathered face, commanding and magnetic presence, dressed in elegant evening clothes, cinematic lighting, photorealistic, charismatic but slightly predatory expression"
+    },
+    {
+      "id": "char_03",
+      "name": "Martin",
+      "role": "supporting character / catalyst",
+      "age_current": "same age as Christine, late 30s",
+      "physical_description": {
+        "head": "shaved",
+        "face": "deeply suntanned",
+        "build": "lean, pirate-like quality",
+        "style": "casually sophisticated",
+        "overall_look": "handsome like a pirate, worldly, South African"
+      },
+      "personality": "witty, perceptive, slightly cynical about the theater world, warm toward Christine",
+      "backstory": "South African dramaturge at Circle Rep. Ivan helped him secure the job. Old acquaintance of Ivan's circle. Ends up leaving the party with Christine.",
+      "voice_profile": {
+        "tone": "dry humor, South African accent, confident and easy",
+        "elevenlabs_suggestion": "Thomas — smooth, accented, sardonic male"
+      },
+      "image_generation_prompt": "Portrait of Martin, a South African man in his late 30s, shaved head, deeply suntanned face, handsome with pirate-like quality, casually sophisticated evening wear, warm and knowing expression, cinematic lighting, photorealistic"
+    },
+    {
+      "id": "char_04",
+      "name": "Pia Borysenko",
+      "role": "supporting character / mirror to Christine",
+      "age_current": "17",
+      "physical_description": {
+        "face": "round-faced brunette",
+        "build": "plump hands like a toddler's, ordinary-looking teenage girl",
+        "style": "clinging dress, slinky, teetering on high heels, errant bra strap",
+        "makeup": "smeared by end of night, slightly drunk",
+        "overall_look": "famous since birth, glowing with attention, flushed and happy"
+      },
+      "personality": "used to the spotlight since childhood, charismatic, comfortable with adult attention, slightly oblivious, hungry (literally and metaphorically)",
+      "backstory": "Ivan and Beth's daughter. Famous from birth — photographed by a Polish photographer (portrait in Guggenheim), inspired a children's book series, eligible for Equity card by age 10. Taking SATs next morning. Boyfriend Justin is her driver.",
+      "voice_profile": {
+        "tone": "bright, confident, teenage girl used to attention, slightly breathless",
+        "elevenlabs_suggestion": "Elli — young, bright, American teenage female"
+      },
+      "image_generation_prompt": "Portrait of Pia Borysenko, 17-year-old girl, round-faced brunette, wearing a clinging slinky dress, flushed and happy expression, slightly smeared makeup, plump youthful hands, teetering on high heels, glowing with attention, cinematic lighting, photorealistic"
+    },
+    {
+      "id": "char_05",
+      "name": "Beth Borysenko",
+      "role": "minor character / symbolic presence",
+      "age_current": "60s",
+      "physical_description": {
+        "hair": "blond, twisted into loose chignon",
+        "build": "plump shoulders",
+        "style": "batik sundress",
+        "skin": "deep freckled cleavage, skin that spent forty or fifty summers in the sun",
+        "overall_look": "pragmatic, grounded, warmly maternal"
+      },
+      "personality": "pragmatic, secure, Ivan's 'rock and muse', aware of his wandering eye but settled in her position",
+      "voice_profile": {
+        "tone": "calm, warm, measured",
+        "elevenlabs_suggestion": "Domi — steady, mature American female"
+      },
+      "image_generation_prompt": "Portrait of Beth Borysenko, woman in her 60s, blond hair twisted in loose chignon, plump shoulders, batik sundress, deep freckled cleavage, skin weathered by decades of sun, warm pragmatic expression, cinematic lighting, photorealistic"
+    }
+  ],
+
+  "settings": [
+    {
+      "id": "set_01",
+      "name": "Ukrainian Cultural Center — Upstairs Gallery",
+      "location": "Downtown New York, far from theater district",
+      "time": "Evening",
+      "description": "A modern building with Cyrillic lettering and 'UKRAINIAN CULTURAL CENTER' boldface on front window. Upstairs gallery with gleaming wood floors. One hundred chairs arranged in a horseshoe facing an improvised stage. A girl at the door hands out programs.",
+      "mood": "formal, ceremonial, slightly foreign, reverent",
+      "color_palette": "warm wood tones, soft gallery lighting, cream and gold",
+      "image_generation_prompt": "Interior of Ukrainian Cultural Center upstairs gallery, New York City, gleaming wood floors, hundred chairs arranged in horseshoe shape facing improvised stage, soft warm gallery lighting, Cyrillic decorations, evening event atmosphere, cinematic wide shot, photorealistic, warm gold tones"
+    },
+    {
+      "id": "set_02",
+      "name": "Paramour Restaurant — Interior",
+      "location": "SoHo, New York",
+      "time": "Late evening, after 9pm",
+      "description": "Crowded SoHo restaurant. Samba music nearly lost in conversational roar. Waiters circulating precariously with trays of appetizers. Strangers elbow to elbow. Old friends shrieking greetings. Air conditioning going full force. A bar area. A patio outside.",
+      "mood": "chaotic, vibrant, overwhelming, social theater, tension beneath the surface",
+      "color_palette": "deep warm restaurant lighting, amber and shadow, crowded and close",
+      "image_generation_prompt": "Interior of Paramour restaurant SoHo New York, crowded after-party, warm amber lighting, people packed elbow to elbow, samba music atmosphere, waiters with trays of appetizers, sophisticated theater crowd, late evening, cinematic wide shot, photorealistic, deep warm tones"
+    },
+    {
+      "id": "set_03",
+      "name": "Paramour Restaurant — Dark Patio",
+      "location": "SoHo, New York (exterior patio)",
+      "time": "Late evening",
+      "description": "Dark outdoor patio. A gray-haired man in Armani smoking, talking into headset. A blond boy in silky blue paisley shirt asking for a light. Brick wall where shadows hide faces. Ivan and Christine sit together here.",
+      "mood": "intimate, shadowy, private within public space, charged",
+      "color_palette": "deep blue-gray night, cigarette ember glow, brick shadows, city ambient light",
+      "image_generation_prompt": "Dark outdoor patio of upscale SoHo restaurant New York at night, brick walls, ambient city lighting, small groups of people smoking and talking, intimate shadowy atmosphere, blue-gray night tones, cinematic, photorealistic"
+    },
+    {
+      "id": "set_04",
+      "name": "Ivan's Off-Campus Apartment (Flashback)",
+      "location": "Upstate New York college town",
+      "time": "Evening/night — flashback, early 1990s",
+      "description": "Shades pulled to the sills. Bed made with crisp white sheets. Living room couch. A private, controlled space. Ivan watched from a chair, arms crossed, while Christine posed.",
+      "mood": "tense, voyeuristic, power-imbalanced, shadowy intimacy",
+      "color_palette": "low warm light, cream white sheets, dark shadows, intimate and claustrophobic",
+      "image_generation_prompt": "Dark intimate apartment interior 1990s, shades pulled down, crisp white sheets on bed visible, single lamp warm light casting deep shadows, voyeuristic atmosphere, cinematic, photorealistic, slightly desaturated nostalgic tone"
+    },
+    {
+      "id": "set_05",
+      "name": "Downtown Hospice (Flashback — Tommy)",
+      "location": "Downtown New York",
+      "time": "Mid 1990s flashback",
+      "description": "Christine sleeping in a chair beside a hospital bed. Tommy wasting away. The city outside felt like a vast teeming grave during this period.",
+      "mood": "grief, loss, vigil, quiet devastation",
+      "color_palette": "pale hospital white, gray dawn light, muted and drained of color",
+      "image_generation_prompt": "Hospital room interior, woman asleep in chair beside a hospital bed, pale clinical lighting, flowers wilting, quiet grief atmosphere, early morning gray light through window, cinematic, photorealistic, desaturated muted palette"
+    }
+  ],
+
+  "scenes": [
+    {
+      "id": "scene_01",
+      "title": "Arrival at the Tribute",
+      "setting_id": "set_01",
+      "characters": ["char_01"],
+      "narrative": "Christine arrives downtown at the Ukrainian Cultural Center, crossing the street carefully on four-inch heels. She checks the address against her invitation. She notices the Cyrillic lettering on the building — a reminder that Ivan was born there, though she'd always thought of him as a New Yorker.",
+      "emotion": "nervous anticipation, slight disorientation",
+      "key_visual": "Christine in heels crossing a New York street at dusk, looking up at the Ukrainian Cultural Center facade with its Cyrillic lettering",
+      "dialogue": [],
+      "camera_direction": "Low angle tracking shot following Christine's heels on pavement, then pulling up to reveal the building facade",
+      "image_generation_prompt": "Elegant blonde woman in her late 30s crossing a New York City street at dusk, wearing four-inch stiletto heels, checking an invitation in her purse, Ukrainian Cultural Center building visible behind her with Cyrillic lettering, warm dusk lighting, cinematic, photorealistic",
+      "animation_notes": "Slow elegant walking motion, slight sway, camera tracks from feet up to face as she looks at the building"
+    },
+    {
+      "id": "scene_02",
+      "title": "Spotting Beth — The Wife",
+      "setting_id": "set_01",
+      "characters": ["char_01", "char_05"],
+      "narrative": "Inside the gallery, Christine spots the reserved front row. A woman sits alone — Beth, Ivan's wife. Christine studies her: blond chignon, plump shoulders, batik sundress. Beth's name has been lodged in Christine's memory like a bullet. She thinks about the photograph on Ivan's desk — Beth nude, a baby asleep on her shoulder.",
+      "emotion": "jealousy, obsession, complicated awe",
+      "key_visual": "Christine's POV watching Beth's back — blond chignon, batik sundress — seated alone in the reserved front row",
+      "dialogue": [],
+      "camera_direction": "Christine's POV shot from midway back, slowly zooming toward the back of Beth's head",
+      "image_generation_prompt": "Interior gallery event space, back view of a blonde woman in batik sundress seated alone in reserved front row, other guests filing in around her, warm gallery lighting, slightly voyeuristic framing, cinematic, photorealistic",
+      "animation_notes": "Slow zoom from Christine's perspective toward Beth's back, subtle crowd movement around her"
+    },
+    {
+      "id": "scene_03",
+      "title": "Ivan's Entrance — With the Girl",
+      "setting_id": "set_01",
+      "characters": ["char_01", "char_02", "char_03", "char_04"],
+      "narrative": "Ivan finally strides down the aisle with a girl on his arm. The crowd bursts into applause. Christine assumes it's a young lover — until Martin leans in and tells her: that's Pia, Ivan's daughter.",
+      "emotion": "shock, embarrassment, relief, complicated jealousy",
+      "key_visual": "Ivan striding down the aisle, a young round-faced brunette on his arm, crowd applauding. Christine's face cycling through emotions.",
+      "dialogue": [
+        {"character": "char_01", "line": "Let me guess. You were his favorite student."},
+        {"character": "char_03", "line": "I'm Martin, by the way."},
+        {"character": "char_01", "line": "Christine. How did you know I was his student?"},
+        {"character": "char_03", "line": "Ivan is nothing if not consistent. He's always had an eye for blondes."},
+        {"character": "char_01", "line": "It seems his tastes have changed."},
+        {"character": "char_03", "line": "Darling, that's Pia. Ivan's daughter."}
+      ],
+      "camera_direction": "Wide shot of Ivan's entrance, then cut to Christine's face, then two-shot of Christine and Martin whispering",
+      "image_generation_prompt": "Elegant aging Ukrainian theater director in his 60s striding confidently down a gallery aisle, young brunette teenager on his arm, crowd of sophisticated New Yorkers applauding, warm spotlight effect, cinematic wide shot, photorealistic",
+      "animation_notes": "Ivan's confident stride, crowd turning and applauding, Christine and Martin in foreground reacting"
+    },
+    {
+      "id": "scene_04",
+      "title": "The Tribute Speeches",
+      "setting_id": "set_01",
+      "characters": ["char_01", "char_02", "char_04", "char_05"],
+      "narrative": "Two-hour tribute. Writers and directors give testimonials. Ivan sits in the front row between Beth and Pia, an arm around each. Christine watches from a distance, absorbing the mythology being constructed around Ivan's life — his marriage, his daughter, his genius.",
+      "emotion": "bittersweet exclusion, observational melancholy",
+      "key_visual": "Ivan seated between Beth and Pia, arm around each, as a speaker gestures at the stage. Christine watching from the back.",
+      "dialogue": [],
+      "camera_direction": "Cross-cutting between speaker at podium and Christine's watching face, then wide shot of Ivan flanked by his family",
+      "image_generation_prompt": "Theater tribute event, older Ukrainian man seated in front row between blonde mature woman and young brunette teenager, arms around both, audience watching stage speaker, warm ceremonial lighting, cinematic, photorealistic",
+      "animation_notes": "Subtle audience movement, Christine's expression shifting from composed to quietly pained"
+    },
+    {
+      "id": "scene_05",
+      "title": "Cab to Paramour — Martin",
+      "setting_id": "set_02",
+      "characters": ["char_01", "char_03"],
+      "narrative": "Christine and Martin share a cab to the after-party at Paramour restaurant in SoHo. Martin tells her he's South African, a dramaturge at Circle Rep — a job Ivan helped him get. Christine listens politely but her mind is elsewhere.",
+      "emotion": "distracted, anticipatory, polite surface over churning interior",
+      "key_visual": "Christine and Martin in the back of a yellow taxi at night, city lights streaking past the windows",
+      "dialogue": [
+        {"character": "char_03", "line": "South African."},
+        {"character": "char_03", "line": "He'll be stuck here for an hour."}
+      ],
+      "camera_direction": "Interior taxi shot, faces lit by passing city lights, Martin talking while Christine looks out the window",
+      "image_generation_prompt": "Two people in the back of a New York City yellow taxi at night, man with shaved tanned head talking, elegant blonde woman looking out the window, city lights streaming past, warm interior taxi light, cinematic intimate framing, photorealistic",
+      "animation_notes": "City lights moving past windows, slight taxi movement, Christine's gaze drifting outward"
+    },
+    {
+      "id": "scene_06",
+      "title": "Paramour Party — Watching Pia",
+      "setting_id": "set_02",
+      "characters": ["char_01", "char_04"],
+      "narrative": "At the crowded Paramour party, Christine stands alone waiting for Martin to get drinks. She watches Pia across the room holding court with a small audience — the Irish actor, a woman in a fedora, a well-dressed couple. Christine finds the girl marvelous.",
+      "emotion": "fascination, warmth, wistfulness",
+      "key_visual": "Christine in corner watching Pia across the crowded room — Pia animated and glowing, audience captivated",
+      "dialogue": [],
+      "camera_direction": "Christine's POV across crowded party room to Pia, people weaving between them, warm amber light",
+      "image_generation_prompt": "Crowded upscale SoHo restaurant party, elegant blonde woman standing alone in corner watching across room, young brunette teenager in clinging dress holding court with small captivated audience, warm amber party lighting, cinematic, photorealistic",
+      "animation_notes": "Crowd moving between Christine and Pia, Pia gesturing animatedly, Christine's quiet watchful stillness"
+    },
+    {
+      "id": "scene_07",
+      "title": "The Patio — Man and Boy",
+      "setting_id": "set_03",
+      "characters": ["char_01"],
+      "narrative": "Christine glances out at the patio. A gray-haired man in Armani smokes while talking into a headset. A pretty blond boy in a silky blue paisley shirt asks him for a light. Later, the boy leans in close holding the man's hand to steady the flame. Christine watches, her mind connecting this to Tommy.",
+      "emotion": "haunted, observational, grief-memory triggered",
+      "key_visual": "Through the restaurant window: the Armani man and the blond boy on the dark patio, faces in shadow, the boy leaning in close",
+      "dialogue": [],
+      "camera_direction": "Christine's POV through glass to the patio, reflection of party in foreground, dark patio scene beyond",
+      "image_generation_prompt": "View through restaurant window at night, dark patio outside, gray-haired man in expensive suit smoking, young blond man in blue paisley silky shirt leaning close, faces partly in shadow, cigarette ember glow, reflection of interior party in glass, cinematic, photorealistic",
+      "animation_notes": "Slight reflection movement in glass, cigarette ember glow, the boy leaning slowly closer"
+    },
+    {
+      "id": "scene_08",
+      "title": "Martin Returns — Then Ivan Appears",
+      "setting_id": "set_02",
+      "characters": ["char_01", "char_02", "char_03"],
+      "narrative": "Martin returns with drinks and kisses Christine's bare shoulder. He asks about Ivan. She says she hasn't seen him in fifteen years. Then she spots Ivan crossing the patio alone — and pushes through the crowd toward him.",
+      "emotion": "electric, compelled, unable to resist",
+      "key_visual": "Christine spotting Ivan through the crowd, her face transforming, pushing through people toward him",
+      "dialogue": [
+        {"character": "char_03", "line": "Bold, I know. I would have tapped your shoulder, but my hands are full."},
+        {"character": "char_03", "line": "No sign of the great man?"},
+        {"character": "char_01", "line": "Not yet."},
+        {"character": "char_01", "line": "Excuse me."}
+      ],
+      "camera_direction": "Close-up on Christine's face changing, then she moves through the crowd — crowd parts like water, Ivan visible ahead",
+      "image_generation_prompt": "Crowded restaurant party interior, elegant blonde woman pushing through sophisticated crowd toward dark patio doorway, her expression focused and compelled, other partygoers blurred around her, warm amber to cool blue transition, cinematic, photorealistic",
+      "animation_notes": "Crowd movement parting, Christine moving with purpose, Ivan's figure visible through the doorway"
+    },
+    {
+      "id": "scene_09",
+      "title": "Reunion on the Dark Patio",
+      "setting_id": "set_03",
+      "characters": ["char_01", "char_02"],
+      "narrative": "Christine and Ivan sit together on the dark patio. He asks about her life. She gives him the highlights — PhD, Fulbright, tenure-track job. He says it's a pity she stopped writing. She tries to placate him. He asks about Tommy — calling him 'a great talent.' Christine realizes it's a stock phrase. She lies and says they lost touch.",
+      "emotion": "intimate but unequal, past power dynamic reasserting itself, quiet heartbreak",
+      "key_visual": "Christine and Ivan seated close on dark patio, his cigarette the only warm light, her face carefully composed",
+      "dialogue": [
+        {"character": "char_02", "line": "Tell me everything about your life."},
+        {"character": "char_02", "line": "It's a pity you stopped writing. I was sure you'd continue. You were a great talent."},
+        {"character": "char_01", "line": "I tried for a while. Then I gave up and went to grad school. It's okay. I'm happy."},
+        {"character": "char_02", "line": "I'm not. It shocks me that you have defected from the theater."},
+        {"character": "char_01", "line": "I haven't defected entirely. I teach Racine and Corneille."},
+        {"character": "char_02", "line": "Literature is something one reads. Racine and Corneille never intended their work to be read."},
+        {"character": "char_02", "line": "What became of your friend Tommy? He was a great talent."},
+        {"character": "char_01", "line": "I don't know. We lost touch years ago."}
+      ],
+      "camera_direction": "Two-shot of Ivan and Christine on dark patio, close and intimate, cigarette smoke drifting. Close-ups on faces as the power dynamic plays out.",
+      "image_generation_prompt": "Two people seated close together on a dark New York restaurant patio at night, aging charismatic man smoking a cigarette talking to an elegant blonde woman, intimate and tension-charged atmosphere, cigarette ember warm glow against dark blue night, cinematic two-shot, photorealistic",
+      "animation_notes": "Cigarette smoke drifting, subtle facial expressions shifting, city ambient sound suggested"
+    },
+    {
+      "id": "scene_10",
+      "title": "Pia Interrupts — Ivan's Greatest Creation",
+      "setting_id": "set_03",
+      "characters": ["char_01", "char_02", "char_04"],
+      "narrative": "Pia crosses the patio toward them, wineglass in hand. Ivan introduces her to Christine as 'my greatest creation.' Pia says 'Nice to see you' — the phrase used to greet a stranger one ought to recognize. Ivan tells Pia it's eleven o'clock, she'll turn into a pumpkin. His tone is nearly flirtatious with his own daughter. Christine's stomach cramps with jealousy.",
+      "emotion": "nauseating jealousy, dark comedy, surreal family dynamic",
+      "key_visual": "Ivan between Christine and Pia, his gaze tender and nearly flirtatious toward his daughter. Christine's forced smile.",
+      "dialogue": [
+        {"character": "char_02", "line": "Christine, I'd like you to meet my greatest creation. My daughter, Pia."},
+        {"character": "char_04", "line": "Nice to see you."},
+        {"character": "char_02", "line": "It's eleven o'clock. You're going to turn into a pumpkin."},
+        {"character": "char_04", "line": "Another hour. I'll be gone by midnight. Poof!"},
+        {"character": "char_02", "line": "You won't miss a thing. The party will fizzle without you."}
+      ],
+      "camera_direction": "Three-shot on the patio, Ivan centered between the two women. Reaction close-up on Christine's face.",
+      "image_generation_prompt": "Three people on dark restaurant patio at night, aging charismatic man centered between elegant blonde woman and young brunette teenage girl with wineglass, man's expression warm and nearly flirtatious toward teenager, third woman's expression carefully controlled, cinematic three-shot, photorealistic",
+      "animation_notes": "Pia's teetering walk approaching, Ivan rising from his seat, Christine's stillness contrasting with Pia's energy"
+    },
+    {
+      "id": "scene_11",
+      "title": "Ivan's Invitation to the Hotel",
+      "setting_id": "set_03",
+      "characters": ["char_01", "char_02"],
+      "narrative": "After Pia leaves, Ivan asks where Christine is staying. When she names the hotel, he says he'll meet her there for a drink. His dark eyes cut through her like a laser. She asks about his wife. He shrugs — it was Beth who made the guest list. He takes Christine's hand in both of his. 'It's my night, after all. You're a present for me.'",
+      "emotion": "charged, seductive, unsettling, she is simultaneously thrilled and objectified",
+      "key_visual": "Ivan taking Christine's hand in both of his, his dark eyes holding hers",
+      "dialogue": [
+        {"character": "char_02", "line": "Where are you staying?"},
+        {"character": "char_02", "line": "I'll meet you later. We can have a drink."},
+        {"character": "char_01", "line": "What about your wife?"},
+        {"character": "char_02", "line": "It was Beth who made the guest list. She knows I love surprises. It's my night, after all. You're a present for me."}
+      ],
+      "camera_direction": "Extreme close-up on Ivan's hands covering Christine's. Her face in soft focus behind.",
+      "image_generation_prompt": "Close up of an older man's hands gently clasping a woman's hand on a dark patio table, his face in background gazing intently, intimate and unsettling power dynamic, deep shadow and warm ambient light, cinematic close-up, photorealistic",
+      "animation_notes": "Slow deliberate hand movement, Ivan's eyes holding contact, Christine's almost involuntary stillness"
+    },
+    {
+      "id": "scene_12",
+      "title": "Pia at the Bar — Hungry Baby",
+      "setting_id": "set_02",
+      "characters": ["char_01", "char_04"],
+      "narrative": "Inside, Christine sits at the bar. Pia appears and collapses into a chair beside her, removing a shoe. She's bleary, a little drunk, makeup smeared. She eyes Christine's toast — she's off carbs for the dress. Christine hands her the plate. Pia eats it in two bites. Christine thinks: Seventeen. That's what seventeen looks like. She'd been just two years older when she sat for Pia's father.",
+      "emotion": "tenderness, vertigo of time, self-recognition, protectiveness",
+      "key_visual": "Pia eating toast in two bites, Christine watching her with complex emotion",
+      "dialogue": [
+        {"character": "char_04", "line": "Thank Jesus. A chair. My feet are killing me. How do you walk in those?"},
+        {"character": "char_04", "line": "Have you seen Justin?"},
+        {"character": "char_04", "line": "He's supposed to drive me home. To Montclair? That looks so good. I'm off carbs. For this dress. I haven't had bread in a week."},
+        {"character": "char_01", "line": "The night is over."}
+      ],
+      "camera_direction": "Bar-level shot of Pia and Christine side by side. Close-up on the toast being eaten. Close-up on Christine's face.",
+      "image_generation_prompt": "Two women at a restaurant bar late at night, young brunette teenage girl with smeared makeup removing her shoe, elegant blonde woman beside her handing over a plate of food, warm bar lighting, intimate and slightly melancholy late-night atmosphere, cinematic, photorealistic",
+      "animation_notes": "Pia's ungainly sitting down, shoe removal, the bread eaten fast and gratefully"
+    },
+    {
+      "id": "scene_13",
+      "title": "Leaving With Martin — The Choice",
+      "setting_id": "set_02",
+      "characters": ["char_01", "char_03"],
+      "narrative": "By 1am the crowd has dwindled. Christine watches Ivan from across the room, still caught by well-wishers. She tells Martin she's had enough. He agrees immediately. For years afterward she'd wonder what would have happened if she'd simply gone back to the hotel to wait for Ivan.",
+      "emotion": "decisive, quietly revolutionary, self-protective",
+      "key_visual": "Christine and Martin moving toward the exit, Christine glancing back once at Ivan across the room",
+      "dialogue": [
+        {"character": "char_01", "line": "I've had enough."},
+        {"character": "char_03", "line": "Likewise. Let's go."}
+      ],
+      "camera_direction": "Over-the-shoulder shot as they leave: Ivan visible small and surrounded in the background, Christine not looking back.",
+      "image_generation_prompt": "Two people leaving a late-night party, elegant blonde woman and shaved-head tanned man walking toward exit, party crowd thinning behind them, warm amber light fading to cool doorway light, cinematic over-shoulder shot, photorealistic",
+      "animation_notes": "The crowd thinned and quieter, Christine's single glance back, the door opening to night"
+    },
+    {
+      "id": "scene_14",
+      "title": "The Taxi Kiss",
+      "setting_id": "set_02",
+      "characters": ["char_01", "char_03"],
+      "narrative": "In the taxi, Christine kisses Martin passionately. Let the ghosts hover. His body is tangible — arms, hands, shoulders. His mouth warm and alive. Yes to everything, she thinks. Do everything to me.",
+      "emotion": "defiant desire, present-tense choosing, release",
+      "key_visual": "Christine kissing Martin in the back of a taxi, city lights blurring past",
+      "dialogue": [],
+      "camera_direction": "Interior taxi shot from front seat, backseat kiss, city lights streaming through rear window",
+      "image_generation_prompt": "Two people kissing passionately in the back of a New York City taxi at night, city lights blurred through windows, warm close interior, sense of decision and release, cinematic intimate framing, photorealistic",
+      "animation_notes": "City lights streaming, the kiss unhurried and deliberate"
+    },
+    {
+      "id": "scene_15",
+      "title": "Aftermath — Pia's Accident",
+      "setting_id": "set_05",
+      "characters": ["char_01", "char_02", "char_04"],
+      "narrative": "Later, lying awake in Martin's bed, Christine imagines Ivan arriving at her hotel. She finds out later he'd turned off his cell phone. A New Jersey state trooper found Pia's car on the Garden State Parkway, nosed into a concrete barrier, Pia unconscious behind the wheel. Her injuries weren't serious. She spent two days in a private hospital room filled with flowers. By night, her father kept vigil beside her bed.",
+      "emotion": "irony, cosmic reckoning, quiet devastation, the universe's answer",
+      "key_visual": "Ivan keeping vigil beside Pia's hospital bed at night — the father, present for his child, as he never truly was for Christine",
+      "dialogue": [],
+      "camera_direction": "Final image: Ivan seated in a hospital chair beside Pia's bed, head bowed, the night outside the window. Still and small.",
+      "image_generation_prompt": "Hospital room at night, aging man seated in chair beside young woman's hospital bed keeping vigil, flowers filling the room, dim bedside lamp, window showing dark city beyond, quiet grief and love, cinematic final shot, photorealistic, slightly desaturated",
+      "animation_notes": "Very slow fade in, the room still, Ivan not moving, flowers in soft focus"
+    }
+  ],
+
+  "narrative_arc": {
+    "act_1": {
+      "scenes": ["scene_01", "scene_02", "scene_03", "scene_04"],
+      "description": "Christine arrives at Ivan's tribute. She encounters the wife she's imagined for years, watches Ivan enter with his daughter, sits through the hagiographic speeches."
+    },
+    "act_2": {
+      "scenes": ["scene_05", "scene_06", "scene_07", "scene_08", "scene_09", "scene_10", "scene_11"],
+      "description": "At the after-party, Christine watches Pia, is haunted by Tommy, reunites with Ivan on the patio. The old dynamic reasserts itself. He invites her to the hotel. She is both thrilled and disturbed."
+    },
+    "act_3": {
+      "scenes": ["scene_12", "scene_13", "scene_14", "scene_15"],
+      "description": "Christine chooses Martin over waiting for Ivan. She kisses him in the taxi. The universe responds: Pia crashes her car, and Ivan keeps vigil at his daughter's bedside — present for her in a way he never was for Christine."
+    }
+  },
+
+  "flashback_sequences": [
+    {
+      "id": "flashback_01",
+      "title": "The Posing Sessions",
+      "setting_id": "set_04",
+      "trigger": "During scene_09 (patio conversation) and scene_13 (at the bar)",
+      "description": "Young Christine (19) undresses in Ivan's apartment. She lies on the floor, the couch, the bed — on her back, then turning as directed. He watches with arms crossed, half-closed eyes. He never touches her. 'Thank you, my love' signals her to dress and leave.",
+      "emotion": "power imbalance, intimacy without contact, young desire meeting older control",
+      "image_generation_prompt": "1990s apartment interior, young 19-year-old blonde woman posing on white sheets, indirect warm light, shades pulled down, older man sitting in background chair arms crossed watching, shadowy intimate atmosphere, slightly hazy nostalgic quality, cinematic, photorealistic",
+      "animation_notes": "Slow dreamy quality, muted warm desaturated 1990s tone, almost silent"
+    },
+    {
+      "id": "flashback_02",
+      "title": "Tommy's Death",
+      "setting_id": "set_05",
+      "trigger": "When Christine sees the man and blond boy on the patio (scene_07)",
+      "description": "Tommy wasting away in a downtown hospice. His wealthy lover paid for care. Christine slept in a chair by his bed.",
+      "emotion": "grief, loyalty, loss of innocence, the city as cemetery",
+      "image_generation_prompt": "Hospital room night, young blonde woman asleep in chair beside hospital bed, dim lamp, pale and quiet, suggestion of loss and long vigil, 1990s AIDS crisis era, cinematic, photorealistic, desaturated",
+      "animation_notes": "Near still image with subtle breathing motion, fade to gray"
+    }
+  ],
+
+  "music_direction": {
+    "overall_tone": "Melancholic, understated, with warmth beneath the sadness",
+    "suggested_instruments": "Piano, muted strings, subtle ambient texture",
+    "act_1_music": "Formal, slightly Ukrainian folk undertone, reserved",
+    "act_2_music": "Tension building, samba distantly audible (party scenes), quiet piano when Christine is internal",
+    "act_3_music": "Bittersweet resolution, piano alone, ending with silence before the hospital scene",
+    "suno_prompt": "Melancholic cinematic piano piece, muted strings, bittersweet and understated, late night New York atmosphere, literary and introspective, slow tempo, no vocals"
+  },
+
+  "voice_casting_summary": {
+    "char_01_christine": "Warm, intelligent, measured American female — ElevenLabs: Rachel or Bella",
+    "char_02_ivan": "Deep baritone, slight Eastern European accent, seductive authority — ElevenLabs: Antoni or Arnold",
+    "char_03_martin": "Sardonic South African male, dry humor — ElevenLabs: Thomas",
+    "char_04_pia": "Bright, confident American teenage female — ElevenLabs: Elli",
+    "char_05_beth": "Minimal lines, warm mature American female — ElevenLabs: Domi"
+  },
+
+  "production_notes": {
+    "total_scenes": 15,
+    "flashback_sequences": 2,
+    "estimated_runtime": "8-12 minutes",
+    "character_consistency_tool": "ComfyUI with IP-Adapter or Flux LoRA per character",
+    "image_to_video_tool": "Runway Gen-3 Alpha or Kling AI",
+    "lip_sync_tool": "Hedra or D-ID",
+    "assembly_tool": "CapCut",
+    "critical_consistency_note": "Generate full character reference sheets for Christine and Ivan first (front, 3/4, profile, multiple expressions) before any scene generation. Use these as IP-Adapter reference in every scene."
+  }
+}
