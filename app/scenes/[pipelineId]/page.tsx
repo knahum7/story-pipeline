@@ -51,6 +51,18 @@ interface LoraInfo {
   status: "training" | "ready" | "failed";
 }
 
+function expandNameVariants(fullNames: string[]): string[] {
+  const variants = new Set<string>();
+  for (const name of fullNames) {
+    variants.add(name);
+    const parts = name.split(/\s+/);
+    for (const part of parts) {
+      if (part.length >= 2) variants.add(part);
+    }
+  }
+  return Array.from(variants).sort((a, b) => b.length - a.length);
+}
+
 function HighlightedPrompt({
   text,
   characterNames,
@@ -66,11 +78,10 @@ function HighlightedPrompt({
     );
   }
 
-  const names = Array.from(characterNames.values()).sort(
-    (a, b) => b.length - a.length
-  );
+  const fullNames = Array.from(characterNames.values());
+  const variants = expandNameVariants(fullNames);
   const pattern = new RegExp(
-    `(${names.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`,
+    `(${variants.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`,
     "gi"
   );
   const parts = text.split(pattern);
@@ -78,7 +89,7 @@ function HighlightedPrompt({
   return (
     <p className="text-[11px] text-parchment/40 font-mono leading-relaxed whitespace-pre-wrap">
       {parts.map((part, i) => {
-        const isName = names.some(
+        const isName = variants.some(
           (n) => n.toLowerCase() === part.toLowerCase()
         );
         return isName ? (
@@ -237,7 +248,14 @@ export default function ScenesPage() {
       const name = getCharName(charId);
       setEditedPrompts((prev) => {
         const prompt = prev[sceneId] || "";
-        if (prompt.toLowerCase().includes(name.toLowerCase())) return prev;
+        const alreadyPresent = name
+          .split(/\s+/)
+          .some(
+            (part) =>
+              part.length >= 2 &&
+              prompt.toLowerCase().includes(part.toLowerCase())
+          );
+        if (alreadyPresent) return prev;
         return { ...prev, [sceneId]: `${name}, ${prompt}` };
       });
     },
@@ -265,21 +283,32 @@ export default function ScenesPage() {
     [getCharName]
   );
 
+  const promptContainsCharacter = useCallback(
+    (prompt: string, charId: string): boolean => {
+      const name = getCharName(charId);
+      const lower = prompt.toLowerCase();
+      if (lower.includes(name.toLowerCase())) return true;
+      return name.split(/\s+/).some(
+        (part) => part.length >= 2 && lower.includes(part.toLowerCase())
+      );
+    },
+    [getCharName]
+  );
+
   const handlePromptChange = useCallback(
     (sceneId: string, newPrompt: string) => {
       setEditedPrompts((prev) => ({ ...prev, [sceneId]: newPrompt }));
 
       setEditedChars((prev) => {
         const current = prev[sceneId] || [];
-        const updated = current.filter((charId) => {
-          const name = getCharName(charId);
-          return newPrompt.toLowerCase().includes(name.toLowerCase());
-        });
+        const updated = current.filter((charId) =>
+          promptContainsCharacter(newPrompt, charId)
+        );
         if (updated.length === current.length) return prev;
         return { ...prev, [sceneId]: updated };
       });
     },
-    [getCharName]
+    [promptContainsCharacter]
   );
 
   const resetScene = useCallback(
