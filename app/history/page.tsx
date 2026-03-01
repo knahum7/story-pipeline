@@ -6,6 +6,7 @@ import Link from "next/link";
 import ResultsViewer from "@/components/ResultsViewer";
 import StreamingOutput from "@/components/StreamingOutput";
 import { PipelineJSON } from "@/types/pipeline";
+import { useLanguage } from "@/lib/language-context";
 
 interface PipelineSummary {
   id: string;
@@ -20,6 +21,7 @@ interface PipelineSummary {
 }
 
 export default function HistoryPage() {
+  const { lang, setLang, t } = useLanguage();
   const [pipelines, setPipelines] = useState<PipelineSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -78,7 +80,7 @@ export default function HistoryPage() {
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
-    return date.toLocaleDateString("en-US", {
+    return date.toLocaleDateString(lang === "tr" ? "tr-TR" : "en-US", {
       month: "short",
       day: "numeric",
       year: "numeric",
@@ -109,7 +111,7 @@ export default function HistoryPage() {
               <Link href="/" className="font-display text-lg font-bold text-parchment tracking-tight hover:text-amber-film transition-colors">
                 Story<span className="text-amber-film italic">Pipeline</span>
               </Link>
-              <p className="text-xs text-parchment/30 -mt-0.5">Animate any written story</p>
+              <p className="text-xs text-parchment/30 -mt-0.5">{t("brand_subtitle")}</p>
             </div>
           </div>
           <div className="flex items-center gap-4">
@@ -117,11 +119,15 @@ export default function HistoryPage() {
               href="/"
               className="flex items-center gap-1.5 text-xs text-parchment/40 hover:text-parchment/70 transition-colors"
             >
-              <span>+ New Pipeline</span>
+              <span>{t("new_pipeline")}</span>
             </Link>
+            <div className="flex rounded-lg overflow-hidden border border-ink-muted text-[11px]">
+              <button onClick={() => setLang("en")} className={`px-2 py-1 transition-colors ${lang === "en" ? "bg-amber-film text-ink font-semibold" : "text-parchment/40 hover:text-parchment/70"}`}>EN</button>
+              <button onClick={() => setLang("tr")} className={`px-2 py-1 transition-colors ${lang === "tr" ? "bg-amber-film text-ink font-semibold" : "text-parchment/40 hover:text-parchment/70"}`}>TR</button>
+            </div>
             <div className="flex items-center gap-2 text-xs text-parchment/30">
               <Clock size={13} />
-              <span>History</span>
+              <span>{t("history")}</span>
             </div>
           </div>
         </div>
@@ -135,7 +141,7 @@ export default function HistoryPage() {
               className="flex items-center gap-2 text-sm text-parchment/50 hover:text-parchment transition-colors mb-6"
             >
               <ArrowLeft size={14} />
-              Back to history
+              {t("back_to_history")}
             </button>
 
             <div className="flex items-center justify-between mb-6 pb-4 border-b border-ink-muted">
@@ -145,13 +151,13 @@ export default function HistoryPage() {
                     onClick={() => setView("visual")}
                     className={`px-4 py-2 transition-colors ${view === "visual" ? "bg-amber-film text-ink font-semibold" : "text-parchment/50 hover:text-parchment/80"}`}
                   >
-                    Visual View
+                    {t("visual_view")}
                   </button>
                   <button
                     onClick={() => setView("json")}
                     className={`px-4 py-2 transition-colors ${view === "json" ? "bg-amber-film text-ink font-semibold" : "text-parchment/50 hover:text-parchment/80"}`}
                   >
-                    Raw JSON
+                    {t("raw_json")}
                   </button>
                 </div>
               </div>
@@ -160,7 +166,7 @@ export default function HistoryPage() {
                 className="flex items-center gap-2 px-4 py-2 rounded-xl bg-ink-soft border border-ink-muted hover:border-amber-film/50 text-parchment/60 hover:text-parchment text-sm transition-all"
               >
                 <Download size={14} />
-                <span>Download JSON</span>
+                <span>{t("download_json")}</span>
               </button>
             </div>
 
@@ -173,9 +179,9 @@ export default function HistoryPage() {
         ) : (
           <>
             <div className="mb-8">
-              <h2 className="font-display text-3xl font-bold text-parchment mb-2">Pipeline History</h2>
+              <h2 className="font-display text-3xl font-bold text-parchment mb-2">{t("pipeline_history")}</h2>
               <p className="text-parchment/40 text-sm">
-                All previously generated animation pipelines
+                {t("all_pipelines_desc")}
               </p>
             </div>
 
@@ -190,18 +196,18 @@ export default function HistoryPage() {
                   onClick={() => window.location.reload()}
                   className="btn-primary px-6 py-3 rounded-xl text-sm"
                 >
-                  Retry
+                  {t("retry")}
                 </button>
               </div>
             ) : pipelines.length === 0 ? (
               <div className="text-center py-20">
                 <div className="text-4xl mb-4">✦</div>
-                <h3 className="font-display text-xl text-parchment mb-2">No pipelines yet</h3>
+                <h3 className="font-display text-xl text-parchment mb-2">{t("no_pipelines_yet")}</h3>
                 <p className="text-parchment/40 text-sm mb-6">
-                  Generate your first animation pipeline to see it here
+                  {t("no_pipelines_desc")}
                 </p>
                 <Link href="/" className="btn-primary px-6 py-3 rounded-xl text-sm inline-block">
-                  Create Pipeline
+                  {t("create_pipeline")}
                 </Link>
               </div>
             ) : (
@@ -220,7 +226,7 @@ export default function HistoryPage() {
                     </div>
 
                     {p.author && (
-                      <p className="text-sm text-parchment/50 mb-2">by {p.author}</p>
+                      <p className="text-sm text-parchment/50 mb-2">{t("by_author")} {p.author}</p>
                     )}
 
                     <div className="flex flex-wrap items-center gap-2 mb-3">
@@ -243,7 +249,7 @@ export default function HistoryPage() {
                     <div className="flex items-center justify-between text-xs text-parchment/30">
                       <span>{formatDate(p.created_at)}</span>
                       {p.total_scenes && (
-                        <span>{p.total_scenes} scenes</span>
+                        <span>{p.total_scenes} {t("scenes_count")}</span>
                       )}
                     </div>
                   </button>
@@ -257,7 +263,7 @@ export default function HistoryPage() {
           <div className="fixed inset-0 bg-ink/80 flex items-center justify-center z-50">
             <div className="flex items-center gap-3 text-parchment">
               <Loader2 size={20} className="animate-spin text-amber-film" />
-              <span>Loading pipeline...</span>
+              <span>{t("loading_pipeline")}</span>
             </div>
           </div>
         )}
@@ -265,7 +271,7 @@ export default function HistoryPage() {
 
       <footer className="border-t border-ink-muted/30 mt-20 py-6">
         <div className="max-w-7xl mx-auto px-6 flex items-center justify-between text-xs text-parchment/20">
-          <span>StoryPipeline · Story-to-Animation Workflow</span>
+          <span>{t("footer_text")}</span>
           <span className="font-mono">v1.0</span>
         </div>
       </footer>

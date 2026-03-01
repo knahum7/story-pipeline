@@ -4,7 +4,7 @@ import { getSupabase } from "@/lib/supabase";
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { pipelineData, rawJson, sourceType, modelUsed, storyCharCount } = body;
+    const { pipelineData, sourceType, modelUsed, storyCharCount } = body;
 
     if (!pipelineData) {
       return NextResponse.json({ error: "pipelineData is required" }, { status: 400 });
@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
         model_used: modelUsed || null,
         story_char_count: storyCharCount || null,
         pipeline_data: pipelineData,
-        raw_json: rawJson || JSON.stringify(pipelineData, null, 2),
+        raw_json: JSON.stringify(pipelineData, null, 2),
       })
       .select("id, title, created_at")
       .single();

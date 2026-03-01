@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { Loader2 } from "lucide-react";
+import { useLanguage } from "@/lib/language-context";
 
 interface StreamingOutputProps {
   rawText: string;
@@ -9,6 +10,7 @@ interface StreamingOutputProps {
 }
 
 export default function StreamingOutput({ rawText, isStreaming }: StreamingOutputProps) {
+  const { t } = useLanguage();
   const containerRef = useRef<HTMLPreElement>(null);
 
   useEffect(() => {
@@ -36,14 +38,14 @@ export default function StreamingOutput({ rawText, isStreaming }: StreamingOutpu
       {isStreaming && (
         <div className="flex items-center gap-2 mb-3 text-xs text-amber-film animate-pulse">
           <Loader2 size={12} className="animate-spin" />
-          <span>Claude is building your pipeline...</span>
+          <span>{t("building_your_pipeline")}</span>
         </div>
       )}
 
       <pre
         ref={containerRef}
         className="json-output max-h-[600px] overflow-auto text-xs leading-relaxed"
-        dangerouslySetInnerHTML={{ __html: highlighted || '<span class="opacity-30">Waiting for output...</span>' }}
+        dangerouslySetInnerHTML={{ __html: highlighted || `<span class="opacity-30">${t("waiting_for_output")}</span>` }}
       />
 
       {isStreaming && (

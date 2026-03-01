@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback } from "react";
 import { Upload, FileText, Image, X, Loader2, GripVertical } from "lucide-react";
+import { useLanguage } from "@/lib/language-context";
 
 type InputMode = "text" | "images";
 
@@ -49,6 +50,7 @@ export default function StoryUploader({
   isProcessing,
   isExtracting,
 }: StoryUploaderProps) {
+  const { t } = useLanguage();
   const [storyText, setStoryText] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
@@ -200,7 +202,7 @@ export default function StoryUploader({
           }`}
         >
           <FileText size={13} />
-          Text / File
+          {t("tab_text_file")}
         </button>
         <button
           onClick={() => setInputMode("images")}
@@ -211,7 +213,7 @@ export default function StoryUploader({
           }`}
         >
           <Image size={13} />
-          Photos of Pages
+          {t("tab_photos")}
         </button>
       </div>
 
@@ -252,7 +254,7 @@ export default function StoryUploader({
                   value={storyText}
                   onChange={handleTextChange}
                   disabled={isBusy}
-                  placeholder="Paste your story here..."
+                  placeholder={t("paste_story_here")}
                   className={`
                     w-full bg-transparent text-parchment placeholder-parchment/20
                     text-sm leading-relaxed p-4 outline-none min-h-[320px] max-h-[500px]
@@ -276,16 +278,16 @@ export default function StoryUploader({
                   <Upload size={22} className="text-amber-film" />
                 </div>
                 <div>
-                  <p className="text-parchment/80 font-medium mb-1">Drop your story file here</p>
-                  <p className="text-parchment/40 text-sm">or click to browse — .txt, .md supported</p>
+                  <p className="text-parchment/80 font-medium mb-1">{t("drop_file_here")}</p>
+                  <p className="text-parchment/40 text-sm">{t("click_to_browse")}</p>
                 </div>
                 <div className="flex items-center gap-3 text-parchment/20 text-xs">
                   <span>——</span>
-                  <span>or paste text directly</span>
+                  <span>{t("or_paste_directly")}</span>
                   <span>——</span>
                 </div>
                 <textarea
-                  placeholder="Paste your story text here..."
+                  placeholder={t("paste_placeholder")}
                   onClick={(e) => e.stopPropagation()}
                   onChange={handleTextChange}
                   value={storyText}
@@ -298,14 +300,14 @@ export default function StoryUploader({
           {storyText && (
             <div className="flex items-center justify-between text-xs text-parchment/40 px-1 animate-fade-up">
               <div className="flex items-center gap-4">
-                <span>{wordCount.toLocaleString()} words</span>
+                <span>{wordCount.toLocaleString()} {t("words")}</span>
                 <span className="text-parchment/20">·</span>
-                <span>{charCount.toLocaleString()} characters</span>
+                <span>{charCount.toLocaleString()} {t("characters_count")}</span>
                 <span className="text-parchment/20">·</span>
                 <span>~{estimatedPages} page{estimatedPages !== 1 ? "s" : ""}</span>
               </div>
               {charCount > 60000 && (
-                <span className="text-amber-film">Long story — may take 2–3 minutes</span>
+                <span className="text-amber-film">{t("long_story_warning")}</span>
               )}
             </div>
           )}
@@ -318,19 +320,19 @@ export default function StoryUploader({
             {isProcessing ? (
               <>
                 <Loader2 size={16} className="animate-spin" />
-                <span>Parsing story with Claude...</span>
+                <span>{t("parsing_with_claude")}</span>
               </>
             ) : (
               <>
                 <span className="text-base">✦</span>
-                <span>Generate Animation Pipeline</span>
+                <span>{t("generate_pipeline")}</span>
               </>
             )}
           </button>
 
           {!hasContent && (
             <p className="text-center text-xs text-parchment/30">
-              Minimum 100 characters · Up to 80,000 characters (~32 pages)
+              {t("min_chars_hint")}
             </p>
           )}
         </>
@@ -366,7 +368,7 @@ export default function StoryUploader({
                   <div className="flex items-center gap-2">
                     <Image size={14} className="text-amber-film" />
                     <span className="text-xs text-amber-film font-mono">
-                      {pages.length} page{pages.length !== 1 ? "s" : ""} selected
+                      {pages.length} {t("pages_selected")}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
@@ -376,7 +378,7 @@ export default function StoryUploader({
                           onClick={() => imageInputRef.current?.click()}
                           className="text-xs text-parchment/50 hover:text-parchment transition-colors px-2 py-1 rounded border border-ink-muted hover:border-amber-film/50"
                         >
-                          + Add more
+                          {t("add_more")}
                         </button>
                         <button
                           onClick={clearAll}
@@ -438,7 +440,7 @@ export default function StoryUploader({
                 </div>
 
                 <p className="text-xs text-parchment/30 mt-3">
-                  Sorted by filename · Drag to reorder · Up to 20 images
+                  {t("sorted_hint")}
                 </p>
               </div>
             ) : (
@@ -451,15 +453,14 @@ export default function StoryUploader({
                 </div>
                 <div>
                   <p className="text-parchment/80 font-medium mb-1">
-                    Upload photos of your story pages
+                    {t("upload_photos")}
                   </p>
                   <p className="text-parchment/40 text-sm">
-                    Drop images here or click to browse — JPEG, PNG, WebP
+                    {t("drop_images")}
                   </p>
                 </div>
                 <p className="text-parchment/30 text-xs max-w-sm">
-                  Take photos of book pages, printed manuscripts, or handwritten stories.
-                  Claude will extract the text and build your animation pipeline.
+                  {t("photo_hint")}
                 </p>
               </div>
             )}
@@ -473,24 +474,24 @@ export default function StoryUploader({
             {isExtracting ? (
               <>
                 <Loader2 size={16} className="animate-spin" />
-                <span>Extracting text from {pages.length} page{pages.length !== 1 ? "s" : ""}...</span>
+                <span>{t("extracting_pages")} {pages.length} {t("pages_suffix")}</span>
               </>
             ) : isProcessing ? (
               <>
                 <Loader2 size={16} className="animate-spin" />
-                <span>Parsing story with Claude...</span>
+                <span>{t("parsing_with_claude")}</span>
               </>
             ) : (
               <>
                 <span className="text-base">✦</span>
-                <span>Extract Text &amp; Generate Pipeline</span>
+                <span>{t("extract_and_generate")}</span>
               </>
             )}
           </button>
 
           {!pages.length && (
             <p className="text-center text-xs text-parchment/30">
-              Supports JPEG, PNG, GIF, WebP · Up to 20 pages per upload
+              {t("image_formats_hint")}
             </p>
           )}
         </>
