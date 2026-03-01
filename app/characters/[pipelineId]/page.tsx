@@ -72,7 +72,7 @@ export default function CharactersPage() {
   const [generatingAll, setGeneratingAll] = useState(false);
   const [generatingViews, setGeneratingViews] = useState<Record<string, boolean>>({});
   const [trainingLora, setTrainingLora] = useState<Record<string, boolean>>({});
-  const [expandedImage, setExpandedImage] = useState<string | null>(null);
+  const [expandedImage, setExpandedImage] = useState<{ id: string; type: "portrait" | "view" } | null>(null);
   const [selectedPortrait, setSelectedPortrait] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -220,7 +220,27 @@ export default function CharactersPage() {
         });
         if (res.ok) {
           setImages((prev) => prev.filter((img) => img.id !== id));
-          if (expandedImage === id) setExpandedImage(null);
+          if (expandedImage?.id === id) setExpandedImage(null);
+        }
+      } catch {
+        // silently fail
+      }
+    },
+    [t, expandedImage]
+  );
+
+  const deleteView = useCallback(
+    async (id: string) => {
+      if (!confirm(t("confirm_delete"))) return;
+      try {
+        const res = await fetch("/api/characters/views", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id }),
+        });
+        if (res.ok) {
+          setViews((prev) => prev.filter((v) => v.id !== id));
+          if (expandedImage?.id === id) setExpandedImage(null);
         }
       } catch {
         // silently fail
@@ -499,10 +519,10 @@ export default function CharactersPage() {
                                       [char.id]: img.id,
                                     }));
                                   } else {
-                                    setExpandedImage(img.id);
+                                    setExpandedImage({ id: img.id, type: "portrait" });
                                   }
                                 }}
-                                onDoubleClick={() => setExpandedImage(img.id)}
+                                onDoubleClick={() => setExpandedImage({ id: img.id, type: "portrait" })}
                                 className={`w-full aspect-[3/4] rounded-lg overflow-hidden border-2 transition-all ${
                                   isSelected && charImages.length > 1
                                     ? "border-amber-film ring-1 ring-amber-film/30"
@@ -572,14 +592,23 @@ export default function CharactersPage() {
                       {hasViews ? (
                         <div className="grid grid-cols-5 sm:grid-cols-10 gap-2">
                           {charViews.map((view) => (
-                            <div key={view.id} className="relative">
-                              <div className="w-full aspect-square rounded-md overflow-hidden border border-ink-muted">
+                            <div key={view.id} className="group relative">
+                              <button
+                                onClick={() => setExpandedImage({ id: view.id, type: "view" })}
+                                className="w-full aspect-square rounded-md overflow-hidden border border-ink-muted hover:border-blue-400/40 transition-all"
+                              >
                                 <img
                                   src={view.image_url}
                                   alt={`${char.name} view`}
                                   className="w-full h-full object-cover"
                                 />
-                              </div>
+                              </button>
+                              <button
+                                onClick={() => deleteView(view.id)}
+                                className="absolute top-0.5 right-0.5 p-0.5 rounded bg-ink/80 text-red-400/70 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                              >
+                                <Trash2 size={10} />
+                              </button>
                             </div>
                           ))}
                         </div>
@@ -665,8 +694,15 @@ export default function CharactersPage() {
       {/* Expanded image overlay */}
       {expandedImage &&
         (() => {
-          const img = images.find((i) => i.id === expandedImage);
-          if (!img) return null;
+          const isPortrait = expandedImage.type === "portrait";
+          const img = isPortrait
+            ? images.find((i) => i.id === expandedImage.id)
+            : null;
+          const view = !isPortrait
+            ? views.find((v) => v.id === expandedImage.id)
+            : null;
+          const imageUrl = img?.image_url || view?.image_url;
+          if (!imageUrl) return null;
           return (
             <div
               className="fixed inset-0 bg-ink/90 z-50 flex items-center justify-center p-6"
@@ -683,20 +719,38 @@ export default function CharactersPage() {
                 onClick={(e) => e.stopPropagation()}
               >
                 <img
-                  src={img.image_url}
-                  alt={img.name}
+                  src={imageUrl}
+                  alt={img?.name || "Training view"}
                   className="max-h-[75vh] max-w-full rounded-xl object-contain"
                 />
                 <div className="text-center">
-                  <p className="text-parchment/70 text-sm font-semibold">
-                    {img.name}
-                  </p>
-                  <p className="text-parchment/30 text-xs mt-1">
-                    {FAL_MODELS.find((m) => m.id === img.model_used)?.label ||
-                      img.model_used}
-                    {img.width && img.height && ` · ${img.width}x${img.height}`}
-                  </p>
+                  {img ? (
+                    <>
+                      <p className="text-parchment/70 text-sm font-semibold">
+                        {img.name}
+                      </p>
+                      <p className="text-parchment/30 text-xs mt-1">
+                        {FAL_MODELS.find((m) => m.id === img.model_used)?.label ||
+                          img.model_used}
+                        {img.width && img.height && ` · ${img.width}x${img.height}`}
+                      </p>
+                    </>
+                  ) : view ? (
+                    <p className="text-parchment/30 text-xs">
+                      {t("views_count")} · {view.azimuth}° / {view.elevation}°
+                    </p>
+                  ) : null}
                 </div>
+                <button
+                  onClick={() => {
+                    if (isPortrait && img) deleteImage(img.id);
+                    else if (view) deleteView(view.id);
+                  }}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-red-900/20 border border-red-800/30 text-red-400 hover:bg-red-900/30 transition-colors"
+                >
+                  <Trash2 size={12} />
+                  {t("delete_image")}
+                </button>
               </div>
             </div>
           );
