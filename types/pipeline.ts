@@ -27,7 +27,6 @@ export interface Character {
   backstory: string;
   arc: string;
   voice_profile: VoiceProfile;
-  character_reference_sheet_prompt: string;
   image_generation_prompt: string;
 }
 

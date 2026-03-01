@@ -13,13 +13,13 @@ export const FAL_MODELS: FalModel[] = [
     description: "Fast, good quality — 12B parameter model",
   },
   {
-    id: "fal-ai/flux-2/dev",
-    label: "FLUX.2 Dev",
+    id: "fal-ai/flux-2",
+    label: "FLUX.2",
     pricing: "~$0.008/MP",
     description: "Fastest and cheapest — enhanced realism",
   },
   {
-    id: "fal-ai/recraft/v3",
+    id: "fal-ai/recraft-v3",
     label: "Recraft V3",
     pricing: "$0.04/img",
     description: "State-of-the-art quality, stylized art",

@@ -106,7 +106,6 @@ const translations: Record<string, TranslationEntry> = {
   style: { en: "Style", tr: "Stil" },
   voice: { en: "Voice", tr: "Ses" },
   portrait_prompt: { en: "Portrait Prompt", tr: "Portre Komutu" },
-  reference_sheet_prompt: { en: "Reference Sheet Prompt", tr: "Referans Sayfası Komutu" },
   subtext: { en: "SUBTEXT", tr: "ALT METİN" },
   key_visual: { en: "KEY VISUAL", tr: "ANA GÖRSEL" },
   dialogue: { en: "DIALOGUE", tr: "DİYALOG" },
@@ -154,10 +153,9 @@ const translations: Record<string, TranslationEntry> = {
 
   // Characters page
   characters_title: { en: "Character Generation", tr: "Karakter Oluşturma" },
-  characters_desc: { en: "Generate character portraits and reference sheets using AI", tr: "AI kullanarak karakter portreleri ve referans sayfaları oluşturun" },
+  characters_desc: { en: "Generate character portraits using AI", tr: "AI kullanarak karakter portreleri oluşturun" },
   generate_characters: { en: "Generate Characters", tr: "Karakter Oluştur" },
   portrait: { en: "Portrait", tr: "Portre" },
-  reference_sheet: { en: "Reference Sheet", tr: "Referans Sayfası" },
   generate: { en: "Generate", tr: "Oluştur" },
   generating: { en: "Generating...", tr: "Oluşturuluyor..." },
   generate_all: { en: "Generate All Portraits", tr: "Tüm Portreleri Oluştur" },

@@ -24,19 +24,12 @@ interface FalSubscribeResult {
 
 export async function POST(req: NextRequest) {
   try {
-    const { pipelineId, characterId, name, prompt, promptType, model } =
+    const { pipelineId, characterId, name, prompt, model } =
       await req.json();
 
-    if (!pipelineId || !characterId || !name || !prompt || !promptType || !model) {
+    if (!pipelineId || !characterId || !name || !prompt || !model) {
       return NextResponse.json(
-        { error: "Missing required fields: pipelineId, characterId, name, prompt, promptType, model" },
-        { status: 400 }
-      );
-    }
-
-    if (!["portrait", "reference_sheet"].includes(promptType)) {
-      return NextResponse.json(
-        { error: "promptType must be 'portrait' or 'reference_sheet'" },
+        { error: "Missing required fields: pipelineId, characterId, name, prompt, model" },
         { status: 400 }
       );
     }
@@ -57,13 +50,13 @@ export async function POST(req: NextRequest) {
 
     const startTime = Date.now();
     console.log(
-      `[characters] Generating ${promptType} for "${name}" (${characterId}) with ${model}`
+      `[characters] Generating portrait for "${name}" (${characterId}) with ${model}`
     );
 
     const result = (await fal.subscribe(model, {
       input: {
         prompt,
-        image_size: promptType === "reference_sheet" ? "landscape_16_9" : "portrait_4_3",
+        image_size: "portrait_4_3",
         num_images: 1,
       },
     })) as FalSubscribeResult;
@@ -104,7 +97,7 @@ export async function POST(req: NextRequest) {
     const contentType = imageResponse.headers.get("content-type") || "image/webp";
     const ext = contentType.includes("png") ? "png" : contentType.includes("jpeg") ? "jpg" : "webp";
 
-    const storagePath = `${pipelineId}/${characterId}/${promptType}-${Date.now()}.${ext}`;
+    const storagePath = `${pipelineId}/${characterId}/portrait-${Date.now()}.${ext}`;
 
     const supabase = getSupabase();
     const { error: uploadError } = await supabase.storage
@@ -134,7 +127,6 @@ export async function POST(req: NextRequest) {
         pipeline_id: pipelineId,
         character_id: characterId,
         name,
-        prompt_type: promptType,
         prompt,
         model_used: model,
         image_url: imageUrl,
@@ -155,7 +147,7 @@ export async function POST(req: NextRequest) {
     }
 
     console.log(
-      `[characters] Saved ${promptType} for "${name}" — ${imageUrl} (${((Date.now() - startTime) / 1000).toFixed(1)}s total)`
+      `[characters] Saved portrait for "${name}" — ${imageUrl} (${((Date.now() - startTime) / 1000).toFixed(1)}s total)`
     );
 
     return NextResponse.json(row, { status: 201 });

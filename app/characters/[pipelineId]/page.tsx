@@ -23,7 +23,6 @@ interface GeneratedImage {
   pipeline_id: string;
   character_id: string;
   name: string;
-  prompt_type: "portrait" | "reference_sheet";
   prompt: string;
   model_used: string;
   image_url: string;
@@ -73,16 +72,10 @@ export default function CharactersPage() {
   }, [pipelineId]);
 
   const generateImage = useCallback(
-    async (char: Character, promptType: "portrait" | "reference_sheet") => {
-      const key = `${char.id}-${promptType}`;
-      setGenerating((prev) => ({ ...prev, [key]: true }));
+    async (char: Character) => {
+      setGenerating((prev) => ({ ...prev, [char.id]: true }));
 
       try {
-        const prompt =
-          promptType === "reference_sheet"
-            ? char.character_reference_sheet_prompt
-            : char.image_generation_prompt;
-
         const res = await fetch("/api/characters/generate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -90,8 +83,7 @@ export default function CharactersPage() {
             pipelineId,
             characterId: char.id,
             name: char.name,
-            prompt,
-            promptType,
+            prompt: char.image_generation_prompt,
             model: selectedModel,
           }),
         });
@@ -107,7 +99,7 @@ export default function CharactersPage() {
         const msg = err instanceof Error ? err.message : t("generation_failed");
         alert(msg);
       } finally {
-        setGenerating((prev) => ({ ...prev, [key]: false }));
+        setGenerating((prev) => ({ ...prev, [char.id]: false }));
       }
     },
     [pipelineId, selectedModel, t]
@@ -118,7 +110,7 @@ export default function CharactersPage() {
     setGeneratingAll(true);
 
     for (const char of pipeline.characters) {
-      await generateImage(char, "portrait");
+      await generateImage(char);
     }
 
     setGeneratingAll(false);
@@ -146,11 +138,8 @@ export default function CharactersPage() {
     [t, expandedImage]
   );
 
-  const getCharImages = (charId: string, type?: string) =>
-    images.filter(
-      (img) =>
-        img.character_id === charId && (!type || img.prompt_type === type)
-    );
+  const getCharImages = (charId: string) =>
+    images.filter((img) => img.character_id === charId);
 
   if (loading) {
     return (
@@ -292,10 +281,8 @@ export default function CharactersPage() {
         {/* Character cards */}
         <div className="space-y-6">
           {pipeline.characters?.map((char) => {
-            const portraits = getCharImages(char.id, "portrait");
-            const refSheets = getCharImages(char.id, "reference_sheet");
-            const isGenPortrait = generating[`${char.id}-portrait`];
-            const isGenRef = generating[`${char.id}-reference_sheet`];
+            const charImages = getCharImages(char.id);
+            const isGen = generating[char.id];
 
             return (
               <div
@@ -327,13 +314,29 @@ export default function CharactersPage() {
                         {char.emotional_role}
                       </p>
                     </div>
-                    <div className="text-right text-xs text-parchment/30 shrink-0">
-                      <p>{char.age_current}</p>
-                      {char.age_alternate && (
-                        <p className="text-parchment/20">
-                          ({char.age_alternate})
-                        </p>
-                      )}
+                    <div className="flex items-center gap-3">
+                      <div className="text-right text-xs text-parchment/30 shrink-0">
+                        <p>{char.age_current}</p>
+                        {char.age_alternate && (
+                          <p className="text-parchment/20">
+                            ({char.age_alternate})
+                          </p>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => generateImage(char)}
+                        disabled={isGen}
+                        className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-amber-film/10 border border-amber-film/20 text-amber-glow hover:bg-amber-film/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {isGen ? (
+                          <Loader2 size={11} className="animate-spin" />
+                        ) : (
+                          <Sparkles size={11} />
+                        )}
+                        <span>
+                          {isGen ? t("generating") : t("generate")}
+                        </span>
+                      </button>
                     </div>
                   </div>
 
@@ -345,136 +348,46 @@ export default function CharactersPage() {
                   </p>
                 </div>
 
-                {/* Generation sections */}
-                <div className="p-6 space-y-6">
-                  {/* Portrait section */}
-                  <div>
-                    <div className="flex items-center justify-between mb-3">
-                      <h4 className="text-sm font-semibold text-parchment/80 flex items-center gap-2">
-                        <ImageIcon size={14} className="text-amber-film" />
-                        {t("portrait")}
-                      </h4>
-                      <button
-                        onClick={() => generateImage(char, "portrait")}
-                        disabled={isGenPortrait}
-                        className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-amber-film/10 border border-amber-film/20 text-amber-glow hover:bg-amber-film/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {isGenPortrait ? (
-                          <Loader2 size={11} className="animate-spin" />
-                        ) : (
-                          <Sparkles size={11} />
-                        )}
-                        <span>
-                          {isGenPortrait ? t("generating") : t("generate")}
-                        </span>
-                      </button>
-                    </div>
-
-                    {/* Prompt preview */}
-                    <div className="bg-ink/60 border border-ink-muted/50 rounded-lg p-3 mb-3">
-                      <p className="text-[11px] text-parchment/40 font-mono leading-relaxed line-clamp-3">
-                        {char.image_generation_prompt}
-                      </p>
-                    </div>
-
-                    {/* Generated portraits */}
-                    {portraits.length > 0 ? (
-                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                        {portraits.map((img) => (
-                          <div key={img.id} className="group relative">
-                            <button
-                              onClick={() => setExpandedImage(img.id)}
-                              className="w-full aspect-[3/4] rounded-lg overflow-hidden border border-ink-muted hover:border-amber-film/40 transition-all"
-                            >
-                              <img
-                                src={img.image_url}
-                                alt={img.name}
-                                className="w-full h-full object-cover"
-                              />
-                            </button>
-                            <button
-                              onClick={() => deleteImage(img.id)}
-                              className="absolute top-1.5 right-1.5 p-1 rounded-md bg-ink/80 text-red-400/70 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                            >
-                              <Trash2 size={12} />
-                            </button>
-                            <p className="text-[10px] text-parchment/30 mt-1 truncate">
-                              {FAL_MODELS.find((m) => m.id === img.model_used)?.label || img.model_used}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-xs text-parchment/20 italic">
-                        {t("no_images_yet")}
-                      </p>
-                    )}
+                {/* Generation section */}
+                <div className="p-6">
+                  {/* Prompt preview */}
+                  <div className="bg-ink/60 border border-ink-muted/50 rounded-lg p-3 mb-3">
+                    <p className="text-[11px] text-parchment/40 font-mono leading-relaxed line-clamp-3">
+                      {char.image_generation_prompt}
+                    </p>
                   </div>
 
-                  {/* Reference sheet section */}
-                  {char.character_reference_sheet_prompt && (
-                    <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <h4 className="text-sm font-semibold text-parchment/80 flex items-center gap-2">
-                          <ImageIcon size={14} className="text-blue-400" />
-                          {t("reference_sheet")}
-                        </h4>
-                        <button
-                          onClick={() => generateImage(char, "reference_sheet")}
-                          disabled={isGenRef}
-                          className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-blue-900/20 border border-blue-800/30 text-blue-400 hover:bg-blue-900/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {isGenRef ? (
-                            <Loader2 size={11} className="animate-spin" />
-                          ) : (
-                            <Sparkles size={11} />
-                          )}
-                          <span>
-                            {isGenRef ? t("generating") : t("generate")}
-                          </span>
-                        </button>
-                      </div>
-
-                      {/* Prompt preview */}
-                      <div className="bg-ink/60 border border-ink-muted/50 rounded-lg p-3 mb-3">
-                        <p className="text-[11px] text-parchment/40 font-mono leading-relaxed line-clamp-3">
-                          {char.character_reference_sheet_prompt}
-                        </p>
-                      </div>
-
-                      {/* Generated ref sheets */}
-                      {refSheets.length > 0 ? (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          {refSheets.map((img) => (
-                            <div key={img.id} className="group relative">
-                              <button
-                                onClick={() => setExpandedImage(img.id)}
-                                className="w-full aspect-video rounded-lg overflow-hidden border border-ink-muted hover:border-blue-400/40 transition-all"
-                              >
-                                <img
-                                  src={img.image_url}
-                                  alt={img.name}
-                                  className="w-full h-full object-cover"
-                                />
-                              </button>
-                              <button
-                                onClick={() => deleteImage(img.id)}
-                                className="absolute top-1.5 right-1.5 p-1 rounded-md bg-ink/80 text-red-400/70 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                              >
-                                <Trash2 size={12} />
-                              </button>
-                              <p className="text-[10px] text-parchment/30 mt-1 truncate">
-                                {FAL_MODELS.find((m) => m.id === img.model_used)?.label || img.model_used}
-                              </p>
-                            </div>
-                          ))}
+                  {/* Generated images */}
+                  {charImages.length > 0 ? (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                      {charImages.map((img) => (
+                        <div key={img.id} className="group relative">
+                          <button
+                            onClick={() => setExpandedImage(img.id)}
+                            className="w-full aspect-[3/4] rounded-lg overflow-hidden border border-ink-muted hover:border-amber-film/40 transition-all"
+                          >
+                            <img
+                              src={img.image_url}
+                              alt={img.name}
+                              className="w-full h-full object-cover"
+                            />
+                          </button>
+                          <button
+                            onClick={() => deleteImage(img.id)}
+                            className="absolute top-1.5 right-1.5 p-1 rounded-md bg-ink/80 text-red-400/70 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                          <p className="text-[10px] text-parchment/30 mt-1 truncate">
+                            {FAL_MODELS.find((m) => m.id === img.model_used)?.label || img.model_used}
+                          </p>
                         </div>
-                      ) : (
-                        <p className="text-xs text-parchment/20 italic">
-                          {t("no_images_yet")}
-                        </p>
-                      )}
+                      ))}
                     </div>
+                  ) : (
+                    <p className="text-xs text-parchment/20 italic">
+                      {t("no_images_yet")}
+                    </p>
                   )}
                 </div>
               </div>
@@ -509,7 +422,7 @@ export default function CharactersPage() {
               />
               <div className="text-center">
                 <p className="text-parchment/70 text-sm font-semibold">
-                  {img.name} — {img.prompt_type === "portrait" ? t("portrait") : t("reference_sheet")}
+                  {img.name}
                 </p>
                 <p className="text-parchment/30 text-xs mt-1">
                   {FAL_MODELS.find((m) => m.id === img.model_used)?.label || img.model_used}

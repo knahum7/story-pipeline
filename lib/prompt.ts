@@ -16,7 +16,7 @@ Produce a JSON object with exactly these top-level keys: story, characters, sett
 
 STORY object fields: title, author, source, genre, tone, theme, era, art_style_direction.
 
-CHARACTERS array — each character: id, name, role, emotional_role, age_current, age_alternate (if flashbacks), physical_description (hair/eyes/build/skin/height/distinguishing_features/style/overall_look), personality, backstory, arc, voice_profile (tone/speech_patterns/elevenlabs_suggestion), character_reference_sheet_prompt (multi-angle reference sheet prompt), image_generation_prompt.
+CHARACTERS array — each character: id, name, role, emotional_role, age_current, age_alternate (if flashbacks), physical_description (hair/eyes/build/skin/height/distinguishing_features/style/overall_look), personality, backstory, arc, voice_profile (tone/speech_patterns/elevenlabs_suggestion), image_generation_prompt.
 
 SETTINGS array — each setting: id, name, location, time_of_day, era, description, mood, color_palette, sound_environment, image_generation_prompt.
 

@@ -113,9 +113,6 @@ function CharacterCard({ char }: { char: Character }) {
       </div>
 
       <PromptBox label={t("portrait_prompt")} prompt={char.image_generation_prompt} />
-      {char.character_reference_sheet_prompt && (
-        <PromptBox label={t("reference_sheet_prompt")} prompt={char.character_reference_sheet_prompt} />
-      )}
     </div>
   );
 }
