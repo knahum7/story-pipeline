@@ -15,6 +15,7 @@ async function createZipFromUrls(imageUrls: string[]): Promise<Buffer> {
   archive.pipe(passThrough);
 
   for (let i = 0; i < imageUrls.length; i++) {
+    console.log(`[train-lora] Downloading image ${i + 1}/${imageUrls.length}...`);
     const res = await fetch(imageUrls[i]);
     if (!res.ok) {
       console.warn(`[train-lora] Failed to download image ${i}: ${res.status}`);
@@ -27,9 +28,11 @@ async function createZipFromUrls(imageUrls: string[]): Promise<Buffer> {
       : contentType.includes("jpeg") || contentType.includes("jpg")
         ? "jpg"
         : "webp";
+    console.log(`[train-lora] Image ${i + 1}: ${(buffer.length / 1024).toFixed(0)} KB`);
     archive.append(buffer, { name: `image_${String(i).padStart(3, "0")}.${ext}` });
   }
 
+  console.log("[train-lora] Finalizing zip...");
   await archive.finalize();
   await new Promise<void>((resolve) => passThrough.on("end", resolve));
 
@@ -107,6 +110,7 @@ export async function POST(req: NextRequest) {
     console.log(`[train-lora] Zip created: ${(zipBuffer.length / 1024).toFixed(0)} KB`);
 
     const zipPath = `${pipelineId}/${characterId}/training-${Date.now()}.zip`;
+    console.log(`[train-lora] Uploading zip to Supabase Storage...`);
     const { error: uploadError } = await supabase.storage
       .from("character-views")
       .upload(zipPath, zipBuffer, {
