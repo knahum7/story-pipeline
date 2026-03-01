@@ -17,7 +17,7 @@ interface FalResult {
 
 export async function POST(req: NextRequest) {
   try {
-    const { pipelineId, sceneId, prompt, characterIds, settingPrompt } = await req.json();
+    const { pipelineId, sceneId, prompt, characterIds, characterNames, settingPrompt } = await req.json();
 
     if (!pipelineId || !sceneId || !prompt) {
       return NextResponse.json(
@@ -37,8 +37,11 @@ export async function POST(req: NextRequest) {
     const startTime = Date.now();
 
     const charIds: string[] = characterIds || [];
+    const charNames: Record<string, string> = characterNames || {};
+    const loraScale =
+      charIds.length <= 2 ? 1 : charIds.length === 3 ? 0.85 : 0.7;
     const loras: { path: string; scale: number }[] = [];
-    const triggerWords: string[] = [];
+    const triggerMap: Record<string, string> = {};
 
     if (charIds.length > 0) {
       const { data: loraRows } = await supabase
@@ -49,15 +52,57 @@ export async function POST(req: NextRequest) {
         .in("character_id", charIds);
 
       for (const lora of loraRows || []) {
-        loras.push({ path: lora.lora_url, scale: 1 });
-        triggerWords.push(lora.trigger_word);
+        loras.push({ path: lora.lora_url, scale: loraScale });
+        triggerMap[lora.character_id] = lora.trigger_word;
+      }
+    }
+
+    let scenePrompt = prompt as string;
+    const unplacedTriggers: string[] = [];
+
+    for (const [charId, triggerWord] of Object.entries(triggerMap)) {
+      const name = charNames[charId];
+      if (!name) {
+        unplacedTriggers.push(triggerWord);
+        continue;
+      }
+
+      const fullNameRegex = new RegExp(
+        name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+        "gi"
+      );
+      if (fullNameRegex.test(scenePrompt)) {
+        scenePrompt = scenePrompt.replace(fullNameRegex, triggerWord);
+        continue;
+      }
+
+      const parts = name.split(/\s+/).filter((p) => p.length >= 2);
+      let placed = false;
+      for (const part of parts) {
+        const partRegex = new RegExp(
+          part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+          "gi"
+        );
+        if (partRegex.test(scenePrompt)) {
+          scenePrompt = scenePrompt.replace(partRegex, (match) => {
+            if (!placed) {
+              placed = true;
+              return triggerWord;
+            }
+            return match;
+          });
+          break;
+        }
+      }
+      if (!placed) {
+        unplacedTriggers.push(triggerWord);
       }
     }
 
     const finalPrompt = [
-      triggerWords.length > 0 ? triggerWords.join(" ") : "",
       settingPrompt || "",
-      prompt,
+      scenePrompt,
+      unplacedTriggers.length > 0 ? unplacedTriggers.join(" ") : "",
     ]
       .filter(Boolean)
       .join(" ");
@@ -66,7 +111,7 @@ export async function POST(req: NextRequest) {
       loras.length > 0 ? "fal-ai/flux-lora" : "fal-ai/flux/dev";
 
     console.log(
-      `[scenes] Generating ${sceneId} with ${model}, ${loras.length} LoRA(s)${settingPrompt ? ", +setting" : ""}, prompt: ${finalPrompt.slice(0, 120)}...`
+      `[scenes] Generating ${sceneId} with ${model}, ${loras.length} LoRA(s) (scale=${loraScale})${settingPrompt ? ", +setting" : ""}${unplacedTriggers.length > 0 ? `, ${unplacedTriggers.length} unplaced` : ""}, prompt: ${finalPrompt.slice(0, 150)}...`
     );
 
     const input: Record<string, unknown> = {
@@ -144,7 +189,7 @@ export async function POST(req: NextRequest) {
         scene_id: sceneId,
         prompt: finalPrompt,
         model_used: model,
-        loras_used: loras.length > 0 ? { loras, trigger_words: triggerWords } : null,
+        loras_used: loras.length > 0 ? { loras, trigger_map: triggerMap } : null,
         image_url: publicUrlData.publicUrl,
         width: imageWidth,
         height: imageHeight,

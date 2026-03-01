@@ -34,7 +34,8 @@ interface SceneImage {
   model_used: string;
   loras_used: {
     loras: { path: string; scale: number }[];
-    trigger_words: string[];
+    trigger_words?: string[];
+    trigger_map?: Record<string, string>;
   } | null;
   image_url: string;
   width: number | null;
@@ -356,6 +357,9 @@ export default function ScenesPage() {
             sceneId: scene.id,
             prompt,
             characterIds: charIds,
+            characterNames: Object.fromEntries(
+              charIds.map((id) => [id, getCharName(id)])
+            ),
             settingPrompt: useSettingPrompt || undefined,
           }),
         });
@@ -373,7 +377,7 @@ export default function ScenesPage() {
         setGenerating((prev) => ({ ...prev, [scene.id]: false }));
       }
     },
-    [pipelineId, editedPrompts, editedChars, includeSetting, editedSettingPrompts, t]
+    [pipelineId, editedPrompts, editedChars, includeSetting, editedSettingPrompts, getCharName, t]
   );
 
   const generateAllScenes = useCallback(async () => {
@@ -1097,7 +1101,7 @@ export default function ScenesPage() {
                   <p className="text-parchment/30 text-xs mt-1">
                     {img.model_used}
                     {img.loras_used
-                      ? ` + ${img.loras_used.trigger_words.join(", ")}`
+                      ? ` + ${img.loras_used.trigger_map ? Object.values(img.loras_used.trigger_map).join(", ") : img.loras_used.trigger_words?.join(", ") || ""}`
                       : ""}
                     {img.width && img.height &&
                       ` · ${img.width}x${img.height}`}
