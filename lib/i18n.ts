@@ -162,6 +162,8 @@ const translations: Record<string, TranslationEntry> = {
   generating_all: { en: "Generating all...", tr: "Tümü oluşturuluyor..." },
   select_model: { en: "Select Model", tr: "Model Seç" },
   no_images_yet: { en: "No images generated yet", tr: "Henüz görsel oluşturulmadı" },
+  select_portrait_hint: { en: "Click a portrait to select it for training views. Double-click to expand.", tr: "Eğitim görüntüleri için bir portre seçmek üzere tıklayın. Büyütmek için çift tıklayın." },
+  selected: { en: "Selected", tr: "Seçili" },
   delete_image: { en: "Delete", tr: "Sil" },
   confirm_delete: { en: "Delete this image?", tr: "Bu görseli sil?" },
   image_deleted: { en: "Image deleted", tr: "Görsel silindi" },

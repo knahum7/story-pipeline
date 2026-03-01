@@ -73,6 +73,7 @@ export default function CharactersPage() {
   const [generatingViews, setGeneratingViews] = useState<Record<string, boolean>>({});
   const [trainingLora, setTrainingLora] = useState<Record<string, boolean>>({});
   const [expandedImage, setExpandedImage] = useState<string | null>(null);
+  const [selectedPortrait, setSelectedPortrait] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const load = async () => {
@@ -147,7 +148,11 @@ export default function CharactersPage() {
 
   const generateViews = useCallback(
     async (charId: string) => {
-      const portrait = images.find((img) => img.character_id === charId);
+      const charImages = images.filter((img) => img.character_id === charId);
+      const selected = selectedPortrait[charId];
+      const portrait = selected
+        ? charImages.find((img) => img.id === selected) || charImages[0]
+        : charImages[0];
       if (!portrait) return;
 
       setGeneratingViews((prev) => ({ ...prev, [charId]: true }));
@@ -173,7 +178,7 @@ export default function CharactersPage() {
         setGeneratingViews((prev) => ({ ...prev, [charId]: false }));
       }
     },
-    [pipelineId, images, t]
+    [pipelineId, images, selectedPortrait, t]
   );
 
   const trainLora = useCallback(
@@ -473,31 +478,62 @@ export default function CharactersPage() {
 
                   {/* Portrait gallery */}
                   {charImages.length > 0 ? (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                      {charImages.map((img) => (
-                        <div key={img.id} className="group relative">
-                          <button
-                            onClick={() => setExpandedImage(img.id)}
-                            className="w-full aspect-[3/4] rounded-lg overflow-hidden border border-ink-muted hover:border-amber-film/40 transition-all"
-                          >
-                            <img
-                              src={img.image_url}
-                              alt={img.name}
-                              className="w-full h-full object-cover"
-                            />
-                          </button>
-                          <button
-                            onClick={() => deleteImage(img.id)}
-                            className="absolute top-1.5 right-1.5 p-1 rounded-md bg-ink/80 text-red-400/70 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                          <p className="text-[10px] text-parchment/30 mt-1 truncate">
-                            {FAL_MODELS.find((m) => m.id === img.model_used)?.label || img.model_used}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
+                    <>
+                      {charImages.length > 1 && (
+                        <p className="text-[11px] text-parchment/40 mb-2">
+                          {t("select_portrait_hint")}
+                        </p>
+                      )}
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                        {charImages.map((img) => {
+                          const isSelected =
+                            selectedPortrait[char.id] === img.id ||
+                            (!selectedPortrait[char.id] && charImages[0]?.id === img.id);
+                          return (
+                            <div key={img.id} className="group relative">
+                              <button
+                                onClick={() => {
+                                  if (charImages.length > 1) {
+                                    setSelectedPortrait((prev) => ({
+                                      ...prev,
+                                      [char.id]: img.id,
+                                    }));
+                                  } else {
+                                    setExpandedImage(img.id);
+                                  }
+                                }}
+                                onDoubleClick={() => setExpandedImage(img.id)}
+                                className={`w-full aspect-[3/4] rounded-lg overflow-hidden border-2 transition-all ${
+                                  isSelected && charImages.length > 1
+                                    ? "border-amber-film ring-1 ring-amber-film/30"
+                                    : "border-ink-muted hover:border-amber-film/40"
+                                }`}
+                              >
+                                <img
+                                  src={img.image_url}
+                                  alt={img.name}
+                                  className="w-full h-full object-cover"
+                                />
+                              </button>
+                              {isSelected && charImages.length > 1 && (
+                                <span className="absolute top-1.5 left-1.5 text-[9px] px-1.5 py-0.5 rounded bg-amber-film text-ink font-semibold">
+                                  {t("selected")}
+                                </span>
+                              )}
+                              <button
+                                onClick={() => deleteImage(img.id)}
+                                className="absolute top-1.5 right-1.5 p-1 rounded-md bg-ink/80 text-red-400/70 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                              <p className="text-[10px] text-parchment/30 mt-1 truncate">
+                                {FAL_MODELS.find((m) => m.id === img.model_used)?.label || img.model_used}
+                              </p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
                   ) : (
                     <p className="text-xs text-parchment/20 italic">
                       {t("no_images_yet")}

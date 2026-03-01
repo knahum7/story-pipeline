@@ -7,14 +7,14 @@ fal.config({ credentials: () => process.env.FAL_KEY || "" });
 const ANGLE_PRESETS = [
   { azimuth: 0, elevation: 0, label: "front" },
   { azimuth: 45, elevation: 0, label: "front-right" },
-  { azimuth: -45, elevation: 0, label: "front-left" },
+  { azimuth: 315, elevation: 0, label: "front-left" },
   { azimuth: 90, elevation: 0, label: "right" },
-  { azimuth: -90, elevation: 0, label: "left" },
+  { azimuth: 270, elevation: 0, label: "left" },
   { azimuth: 135, elevation: 0, label: "back-right" },
-  { azimuth: -135, elevation: 0, label: "back-left" },
+  { azimuth: 225, elevation: 0, label: "back-left" },
   { azimuth: 180, elevation: 0, label: "back" },
   { azimuth: 0, elevation: 20, label: "front-above" },
-  { azimuth: 0, elevation: -15, label: "front-below" },
+  { azimuth: 45, elevation: 20, label: "right-above" },
 ];
 
 interface FalImage {
