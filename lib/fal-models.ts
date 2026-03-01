@@ -3,7 +3,7 @@ export interface FalModel {
   label: string;
   pricing: string;
   description: string;
-  type?: "text-to-image" | "lora-inference";
+  type?: "text-to-image" | "scene-edit";
 }
 
 export const FAL_MODELS: FalModel[] = [
@@ -45,11 +45,11 @@ export const FAL_MODELS: FalModel[] = [
 ];
 
 export const SCENE_MODEL: FalModel = {
-  id: "fal-ai/flux-lora",
-  label: "FLUX.1 + LoRA",
-  pricing: "~$0.025/MP",
-  description: "FLUX.1 Dev with character LoRAs for consistency",
-  type: "lora-inference",
+  id: "fal-ai/nano-banana-2/edit",
+  label: "Nano Banana 2 Edit",
+  pricing: "$0.08/img",
+  description: "Google Gemini-powered reasoning model with multi-reference character composition",
+  type: "scene-edit",
 };
 
 export const DEFAULT_MODEL = FAL_MODELS[0].id;

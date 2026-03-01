@@ -33,9 +33,10 @@ interface SceneImage {
   prompt: string;
   model_used: string;
   loras_used: {
-    loras: { path: string; scale: number }[];
+    loras?: { path: string; scale: number }[];
     trigger_words?: string[];
     trigger_map?: Record<string, string>;
+    character_refs?: { character_id: string; name: string; image_url: string }[];
   } | null;
   image_url: string;
   width: number | null;
@@ -44,13 +45,6 @@ interface SceneImage {
   created_at: string;
 }
 
-interface LoraInfo {
-  id: string;
-  character_id: string;
-  trigger_word: string;
-  lora_url: string;
-  status: "training" | "ready" | "failed";
-}
 
 function expandNameVariants(fullNames: string[]): string[] {
   const variants = new Set<string>();
@@ -115,7 +109,6 @@ export default function ScenesPage() {
 
   const [pipeline, setPipeline] = useState<PipelineJSON | null>(null);
   const [sceneImages, setSceneImages] = useState<SceneImage[]>([]);
-  const [loras, setLoras] = useState<Record<string, LoraInfo>>({});
   const [charPortraits, setCharPortraits] = useState<Record<string, string>>(
     {}
   );
@@ -179,10 +172,9 @@ export default function ScenesPage() {
   useEffect(() => {
     const load = async () => {
       try {
-        const [pipelineRes, scenesRes, lorasRes, charsRes] = await Promise.all([
+        const [pipelineRes, scenesRes, charsRes] = await Promise.all([
           fetch(`/api/pipelines/${pipelineId}`),
           fetch(`/api/scenes?pipeline_id=${pipelineId}`),
-          fetch(`/api/characters/loras?pipeline_id=${pipelineId}`),
           fetch(`/api/characters?pipeline_id=${pipelineId}`),
         ]);
 
@@ -212,11 +204,6 @@ export default function ScenesPage() {
         if (scenesRes.ok) {
           const sData = await scenesRes.json();
           setSceneImages(sData.scenes || []);
-        }
-
-        if (lorasRes.ok) {
-          const lData = await lorasRes.json();
-          setLoras(lData.loras || {});
         }
 
         if (charsRes.ok) {
@@ -357,9 +344,6 @@ export default function ScenesPage() {
             sceneId: scene.id,
             prompt,
             characterIds: charIds,
-            characterNames: Object.fromEntries(
-              charIds.map((id) => [id, getCharName(id)])
-            ),
             settingPrompt: useSettingPrompt || undefined,
           }),
         });
@@ -377,7 +361,7 @@ export default function ScenesPage() {
         setGenerating((prev) => ({ ...prev, [scene.id]: false }));
       }
     },
-    [pipelineId, editedPrompts, editedChars, includeSetting, editedSettingPrompts, getCharName, t]
+    [pipelineId, editedPrompts, editedChars, includeSetting, editedSettingPrompts, t]
   );
 
   const generateAllScenes = useCallback(async () => {
@@ -618,10 +602,10 @@ export default function ScenesPage() {
             const isEditing = editingPrompt[scene.id];
             const modified = isSceneModified(scene);
 
-            const allLorasReady =
+            const allHavePortraits =
               sceneChars.length > 0 &&
-              sceneChars.every((cId) => loras[cId]?.status === "ready");
-            const canGenerate = sceneChars.length > 0 && allLorasReady;
+              sceneChars.every((cId) => !!charPortraits[cId]);
+            const canGenerate = sceneChars.length > 0 && allHavePortraits;
 
             const availableChars = allCharacters.filter(
               (c) => !sceneChars.includes(c.id)
@@ -673,7 +657,7 @@ export default function ScenesPage() {
                         !canGenerate
                           ? sceneChars.length === 0
                             ? t("add_characters_first")
-                            : t("some_loras_missing")
+                            : t("some_portraits_missing")
                           : undefined
                       }
                       className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-emerald-900/20 border border-emerald-800/30 text-emerald-400 hover:bg-emerald-900/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
@@ -702,37 +686,34 @@ export default function ScenesPage() {
                       <span className="text-[10px] text-parchment/30 uppercase tracking-wider font-semibold">
                         {t("scene_characters")}
                       </span>
-                      {!allLorasReady && sceneChars.length > 0 && (
+                      {!allHavePortraits && sceneChars.length > 0 && (
                         <span className="flex items-center gap-1 text-[10px] text-amber-400">
                           <AlertCircle size={10} />
-                          {t("some_loras_missing")}
+                          {t("some_portraits_missing")}
                         </span>
                       )}
-                      {allLorasReady && sceneChars.length > 0 && (
+                      {allHavePortraits && sceneChars.length > 0 && (
                         <span className="flex items-center gap-1 text-[10px] text-emerald-400">
                           <CheckCircle2 size={10} />
-                          {t("all_loras_ready")}
+                          {t("all_portraits_ready")}
                         </span>
                       )}
                     </div>
 
                     <div className="flex items-center gap-2 flex-wrap">
                       {sceneChars.map((charId) => {
-                        const hasLora = loras[charId]?.status === "ready";
                         const portrait = charPortraits[charId];
                         return (
                           <div
                             key={charId}
                             className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-xs transition-colors ${
-                              hasLora
+                              portrait
                                 ? "bg-emerald-900/10 border-emerald-800/30 text-emerald-300"
                                 : "bg-ink/40 border-ink-muted text-parchment/50"
                             }`}
                           >
                             {portrait ? (
-                              <div
-                                className={`w-5 h-5 rounded-full overflow-hidden border ${hasLora ? "border-emerald-400/50" : "border-ink-muted"}`}
-                              >
+                              <div className="w-5 h-5 rounded-full overflow-hidden border border-emerald-400/50">
                                 <img
                                   src={portrait}
                                   alt={getCharName(charId)}
@@ -740,14 +721,12 @@ export default function ScenesPage() {
                                 />
                               </div>
                             ) : (
-                              <div
-                                className={`w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-mono ${hasLora ? "bg-emerald-900/30 text-emerald-400" : "bg-ink-muted text-parchment/40"}`}
-                              >
+                              <div className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-mono bg-ink-muted text-parchment/40">
                                 {charId.replace("char_", "")}
                               </div>
                             )}
                             <span>{getCharName(charId)}</span>
-                            {!hasLora && (
+                            {!portrait && (
                               <AlertCircle
                                 size={10}
                                 className="text-amber-400/60"
@@ -773,10 +752,7 @@ export default function ScenesPage() {
                             {t("add_character")}
                           </button>
                           <div className="absolute top-full left-0 mt-1 bg-ink-soft border border-ink-muted rounded-lg shadow-xl z-10 min-w-[180px] py-1 hidden group-hover:block">
-                            {availableChars.map((char) => {
-                              const hasLora =
-                                loras[char.id]?.status === "ready";
-                              return (
+                            {availableChars.map((char) => (
                                 <button
                                   key={char.id}
                                   onClick={() =>
@@ -798,7 +774,7 @@ export default function ScenesPage() {
                                     </div>
                                   )}
                                   <span className="flex-1">{char.name}</span>
-                                  {hasLora ? (
+                                  {charPortraits[char.id] ? (
                                     <CheckCircle2
                                       size={10}
                                       className="text-emerald-400 shrink-0"
@@ -810,8 +786,7 @@ export default function ScenesPage() {
                                     />
                                   )}
                                 </button>
-                              );
-                            })}
+                              ))}
                           </div>
                         </div>
                       )}
@@ -1017,9 +992,11 @@ export default function ScenesPage() {
                           </button>
                           <p className="text-[10px] text-parchment/30 mt-1 truncate">
                             {img.model_used}
-                            {img.loras_used
-                              ? ` + ${img.loras_used.loras.length} LoRA(s)`
-                              : ""}
+                            {img.loras_used?.character_refs
+                              ? ` + ${img.loras_used.character_refs.length} ref(s)`
+                              : img.loras_used?.loras
+                                ? ` + ${img.loras_used.loras.length} LoRA(s)`
+                                : ""}
                           </p>
                         </div>
                       ))}
@@ -1100,9 +1077,13 @@ export default function ScenesPage() {
                   </p>
                   <p className="text-parchment/30 text-xs mt-1">
                     {img.model_used}
-                    {img.loras_used
-                      ? ` + ${img.loras_used.trigger_map ? Object.values(img.loras_used.trigger_map).join(", ") : img.loras_used.trigger_words?.join(", ") || ""}`
-                      : ""}
+                    {img.loras_used?.character_refs
+                      ? ` + ${img.loras_used.character_refs.map((r) => r.name).join(", ")}`
+                      : img.loras_used?.trigger_map
+                        ? ` + ${Object.values(img.loras_used.trigger_map).join(", ")}`
+                        : img.loras_used?.trigger_words
+                          ? ` + ${img.loras_used.trigger_words.join(", ")}`
+                          : ""}
                     {img.width && img.height &&
                       ` · ${img.width}x${img.height}`}
                   </p>

@@ -14,10 +14,6 @@ import {
   X,
   ChevronDown,
   Users,
-  Eye,
-  Zap,
-  CheckCircle2,
-  AlertCircle,
   Film,
   RotateCcw,
   Pencil,
@@ -40,26 +36,6 @@ interface GeneratedImage {
   created_at: string;
 }
 
-interface CharacterView {
-  id: string;
-  pipeline_id: string;
-  character_id: string;
-  azimuth: number;
-  elevation: number;
-  image_url: string;
-  created_at: string;
-}
-
-interface LoraInfo {
-  id: string;
-  character_id: string;
-  trigger_word: string;
-  lora_url: string;
-  training_images_count: number;
-  status: "training" | "ready" | "failed";
-  created_at: string;
-}
-
 export default function CharactersPage() {
   const params = useParams();
   const pipelineId = params.pipelineId as string;
@@ -67,27 +43,21 @@ export default function CharactersPage() {
 
   const [pipeline, setPipeline] = useState<PipelineJSON | null>(null);
   const [images, setImages] = useState<GeneratedImage[]>([]);
-  const [views, setViews] = useState<CharacterView[]>([]);
-  const [loras, setLoras] = useState<Record<string, LoraInfo>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL);
   const [generating, setGenerating] = useState<Record<string, boolean>>({});
   const [generatingAll, setGeneratingAll] = useState(false);
-  const [generatingViews, setGeneratingViews] = useState<Record<string, boolean>>({});
-  const [trainingLora, setTrainingLora] = useState<Record<string, boolean>>({});
-  const [expandedImage, setExpandedImage] = useState<{ id: string; type: "portrait" | "view" } | null>(null);
-  const [selectedPortrait, setSelectedPortrait] = useState<Record<string, string>>({});
+  const [expandedImage, setExpandedImage] = useState<string | null>(null);
   const [editedPrompts, setEditedPrompts] = useState<Record<string, string>>({});
   const [editingPrompt, setEditingPrompt] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     const load = async () => {
       try {
-        const [pipelineRes, charsRes, lorasRes] = await Promise.all([
+        const [pipelineRes, charsRes] = await Promise.all([
           fetch(`/api/pipelines/${pipelineId}`),
           fetch(`/api/characters?pipeline_id=${pipelineId}`),
-          fetch(`/api/characters/loras?pipeline_id=${pipelineId}`),
         ]);
 
         if (!pipelineRes.ok) throw new Error("Failed to load pipeline");
@@ -103,12 +73,6 @@ export default function CharactersPage() {
         if (charsRes.ok) {
           const cData = await charsRes.json();
           setImages(cData.characters || []);
-        }
-
-        if (lorasRes.ok) {
-          const lData = await lorasRes.json();
-          setLoras(lData.loras || {});
-          setViews(lData.views || []);
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load");
@@ -159,102 +123,6 @@ export default function CharactersPage() {
     setGeneratingAll(false);
   }, [pipeline, generateImage]);
 
-  const generateViews = useCallback(
-    async (charId: string) => {
-      const charImages = images.filter((img) => img.character_id === charId);
-      const selected = selectedPortrait[charId];
-      const portrait = selected
-        ? charImages.find((img) => img.id === selected) || charImages[0]
-        : charImages[0];
-      if (!portrait) return;
-
-      setGeneratingViews((prev) => ({ ...prev, [charId]: true }));
-      setViews((prev) => prev.filter((v) => v.character_id !== charId));
-      try {
-        const res = await fetch("/api/characters/multi-angle", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            pipelineId,
-            characterId: charId,
-            sourceImageUrl: portrait.image_url,
-          }),
-        });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({ error: "Failed" }));
-          throw new Error(err.error || "Failed to generate views");
-        }
-        const data = await res.json();
-        setViews((prev) => [...prev, ...(data.views || [])]);
-      } catch (err) {
-        alert(err instanceof Error ? err.message : t("generation_failed"));
-      } finally {
-        setGeneratingViews((prev) => ({ ...prev, [charId]: false }));
-      }
-    },
-    [pipelineId, images, selectedPortrait, t]
-  );
-
-  const trainLora = useCallback(
-    async (char: Character) => {
-      setTrainingLora((prev) => ({ ...prev, [char.id]: true }));
-      try {
-        const res = await fetch("/api/characters/train-lora", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            pipelineId,
-            characterId: char.id,
-            characterName: char.name,
-          }),
-        });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({ error: "Training failed" }));
-          throw new Error(err.error || "Training failed");
-        }
-        const data = await res.json();
-        setLoras((prev) => ({
-          ...prev,
-          [char.id]: { ...data, status: "training" },
-        }));
-      } catch (err) {
-        alert(err instanceof Error ? err.message : t("generation_failed"));
-        setTrainingLora((prev) => ({ ...prev, [char.id]: false }));
-      }
-    },
-    [pipelineId, t]
-  );
-
-  // Poll for training status when any LoRA is in "training" state
-  useEffect(() => {
-    const trainingChars = Object.entries(loras)
-      .filter(([, l]) => l.status === "training")
-      .map(([charId]) => charId);
-
-    if (trainingChars.length === 0) return;
-
-    const interval = setInterval(async () => {
-      for (const charId of trainingChars) {
-        try {
-          const res = await fetch(
-            `/api/characters/train-lora/status?pipeline_id=${pipelineId}&character_id=${charId}`
-          );
-          if (!res.ok) continue;
-          const data = await res.json();
-
-          if (data.status === "ready" || data.status === "failed") {
-            setLoras((prev) => ({ ...prev, [charId]: data }));
-            setTrainingLora((prev) => ({ ...prev, [charId]: false }));
-          }
-        } catch {
-          // silently retry on next interval
-        }
-      }
-    }, 15000);
-
-    return () => clearInterval(interval);
-  }, [loras, pipelineId]);
-
   const deleteImage = useCallback(
     async (id: string) => {
       if (!confirm(t("confirm_delete"))) return;
@@ -266,27 +134,7 @@ export default function CharactersPage() {
         });
         if (res.ok) {
           setImages((prev) => prev.filter((img) => img.id !== id));
-          if (expandedImage?.id === id) setExpandedImage(null);
-        }
-      } catch {
-        // silently fail
-      }
-    },
-    [t, expandedImage]
-  );
-
-  const deleteView = useCallback(
-    async (id: string) => {
-      if (!confirm(t("confirm_delete"))) return;
-      try {
-        const res = await fetch("/api/characters/views", {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id }),
-        });
-        if (res.ok) {
-          setViews((prev) => prev.filter((v) => v.id !== id));
-          if (expandedImage?.id === id) setExpandedImage(null);
+          if (expandedImage === id) setExpandedImage(null);
         }
       } catch {
         // silently fail
@@ -300,41 +148,28 @@ export default function CharactersPage() {
   useEffect(() => {
     if (!expandedImage) return;
     overlayRef.current?.focus();
-    const allItems: { id: string; type: "portrait" | "view" }[] = [
-      ...images.map((img) => ({ id: img.id, type: "portrait" as const })),
-      ...views.map((v) => ({ id: v.id, type: "view" as const })),
-    ];
-    const currentIdx = allItems.findIndex(
-      (item) => item.id === expandedImage.id && item.type === expandedImage.type
-    );
+    const currentIdx = images.findIndex((i) => i.id === expandedImage);
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === "ArrowRight" || e.key === "ArrowLeft" || e.key === "Escape") {
         e.preventDefault();
         e.stopPropagation();
       }
-      if (e.key === "ArrowRight" && currentIdx < allItems.length - 1) {
-        setExpandedImage(allItems[currentIdx + 1]);
+      if (e.key === "ArrowRight" && currentIdx < images.length - 1) {
+        setExpandedImage(images[currentIdx + 1].id);
       } else if (e.key === "ArrowLeft" && currentIdx > 0) {
-        setExpandedImage(allItems[currentIdx - 1]);
+        setExpandedImage(images[currentIdx - 1].id);
       } else if (e.key === "Escape") {
         setExpandedImage(null);
       }
     };
     window.addEventListener("keydown", handleKey, true);
     return () => window.removeEventListener("keydown", handleKey, true);
-  }, [expandedImage, images, views]);
+  }, [expandedImage, images]);
 
   const getCharImages = (charId: string) =>
     images.filter((img) => img.character_id === charId);
 
-  const getCharViews = (charId: string) =>
-    views.filter((v) => v.character_id === charId);
-
-  const getLoraStatus = (charId: string): LoraInfo | null =>
-    loras[charId] || null;
-
-  const allCharsHaveLora =
-    pipeline?.characters?.every((c) => loras[c.id]?.status === "ready") ?? false;
+  const hasAnyPortrait = images.length > 0;
 
   if (loading) {
     return (
@@ -393,7 +228,7 @@ export default function CharactersPage() {
               <Clock size={13} />
               <span>{t("history")}</span>
             </Link>
-            {allCharsHaveLora && (
+            {hasAnyPortrait && (
               <Link
                 href={`/scenes/${pipelineId}`}
                 className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-emerald-900/20 border border-emerald-800/30 text-emerald-400 hover:bg-emerald-900/30 transition-colors"
@@ -481,14 +316,7 @@ export default function CharactersPage() {
         <div className="space-y-6">
           {pipeline.characters?.map((char) => {
             const charImages = getCharImages(char.id);
-            const charViews = getCharViews(char.id);
-            const lora = getLoraStatus(char.id);
             const isGen = generating[char.id];
-            const isGenViews = generatingViews[char.id];
-            const isTraining = trainingLora[char.id];
-            const hasPortrait = charImages.length > 0;
-            const hasViews = charViews.length > 0;
-            const totalTrainingImages = charViews.length;
 
             return (
               <div
@@ -512,19 +340,6 @@ export default function CharactersPage() {
                         >
                           {char.role}
                         </span>
-                        {/* LoRA status badge */}
-                        {lora?.status === "ready" && (
-                          <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-emerald-900/30 text-emerald-400 font-mono">
-                            <CheckCircle2 size={10} />
-                            {t("lora_ready")}
-                          </span>
-                        )}
-                        {(lora?.status === "training" || isTraining) && (
-                          <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-blue-900/30 text-blue-400 font-mono">
-                            <Loader2 size={10} className="animate-spin" />
-                            {t("lora_training")}
-                          </span>
-                        )}
                       </div>
                       <h3 className="font-display text-xl font-semibold text-parchment">
                         {char.name}
@@ -625,178 +440,35 @@ export default function CharactersPage() {
 
                   {/* Portrait gallery */}
                   {charImages.length > 0 ? (
-                    <>
-                      {charImages.length > 1 && (
-                        <p className="text-[11px] text-parchment/40 mb-2">
-                          {t("select_portrait_hint")}
-                        </p>
-                      )}
-                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                        {charImages.map((img) => {
-                          const isSelected =
-                            selectedPortrait[char.id] === img.id ||
-                            (!selectedPortrait[char.id] && charImages[0]?.id === img.id);
-                          return (
-                            <div key={img.id} className="group relative">
-                              <button
-                                onClick={() => {
-                                  if (charImages.length > 1) {
-                                    setSelectedPortrait((prev) => ({
-                                      ...prev,
-                                      [char.id]: img.id,
-                                    }));
-                                  } else {
-                                    setExpandedImage({ id: img.id, type: "portrait" });
-                                  }
-                                }}
-                                onDoubleClick={() => setExpandedImage({ id: img.id, type: "portrait" })}
-                                className={`w-full aspect-[3/4] rounded-lg overflow-hidden border-2 transition-all ${
-                                  isSelected && charImages.length > 1
-                                    ? "border-amber-film ring-1 ring-amber-film/30"
-                                    : "border-ink-muted hover:border-amber-film/40"
-                                }`}
-                              >
-                                <img
-                                  src={img.image_url}
-                                  alt={img.name}
-                                  className="w-full h-full object-cover"
-                                />
-                              </button>
-                              {isSelected && charImages.length > 1 && (
-                                <span className="absolute top-1.5 left-1.5 text-[9px] px-1.5 py-0.5 rounded bg-amber-film text-ink font-semibold">
-                                  {t("selected")}
-                                </span>
-                              )}
-                              <button
-                                onClick={() => deleteImage(img.id)}
-                                className="absolute top-1.5 right-1.5 p-1 rounded-md bg-ink/80 text-red-400/70 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                              >
-                                <Trash2 size={12} />
-                              </button>
-                              <p className="text-[10px] text-parchment/30 mt-1 truncate">
-                                {FAL_MODELS.find((m) => m.id === img.model_used)?.label || img.model_used}
-                              </p>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                      {charImages.map((img) => (
+                        <div key={img.id} className="group relative">
+                          <button
+                            onClick={() => setExpandedImage(img.id)}
+                            className="w-full aspect-[3/4] rounded-lg overflow-hidden border-2 border-ink-muted hover:border-amber-film/40 transition-all"
+                          >
+                            <img
+                              src={img.image_url}
+                              alt={img.name}
+                              className="w-full h-full object-cover"
+                            />
+                          </button>
+                          <button
+                            onClick={() => deleteImage(img.id)}
+                            className="absolute top-1.5 right-1.5 p-1 rounded-md bg-ink/80 text-red-400/70 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                          <p className="text-[10px] text-parchment/30 mt-1 truncate">
+                            {FAL_MODELS.find((m) => m.id === img.model_used)?.label || img.model_used}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
                   ) : (
                     <p className="text-xs text-parchment/20 italic">
                       {t("no_images_yet")}
                     </p>
-                  )}
-
-                  {/* Multi-angle views section */}
-                  {hasPortrait && (
-                    <div className="border-t border-ink-muted/30 pt-5">
-                      <div className="flex items-center justify-between mb-3">
-                        <h4 className="text-sm font-semibold text-parchment/80 flex items-center gap-2">
-                          <Eye size={14} className="text-blue-400" />
-                          {t("views_count")}
-                          {charViews.length > 0 && (
-                            <span className="text-xs font-mono text-parchment/40">
-                              ({charViews.length}/10)
-                            </span>
-                          )}
-                        </h4>
-                        <button
-                          onClick={() => generateViews(char.id)}
-                          disabled={isGenViews || !hasPortrait}
-                          className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-blue-900/20 border border-blue-800/30 text-blue-400 hover:bg-blue-900/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {isGenViews ? (
-                            <Loader2 size={11} className="animate-spin" />
-                          ) : (
-                            <Eye size={11} />
-                          )}
-                          <span>
-                            {isGenViews ? t("generating_views") : t("generate_views")}
-                          </span>
-                        </button>
-                      </div>
-
-                      {hasViews ? (
-                        <div className="grid grid-cols-5 sm:grid-cols-10 gap-2">
-                          {charViews.map((view) => (
-                            <div key={view.id} className="group relative">
-                              <button
-                                onClick={() => setExpandedImage({ id: view.id, type: "view" })}
-                                className="w-full aspect-square rounded-md overflow-hidden border border-ink-muted hover:border-blue-400/40 transition-all"
-                              >
-                                <img
-                                  src={view.image_url}
-                                  alt={`${char.name} view`}
-                                  className="w-full h-full object-cover"
-                                />
-                              </button>
-                              <button
-                                onClick={() => deleteView(view.id)}
-                                className="absolute top-0.5 right-0.5 p-0.5 rounded bg-ink/80 text-red-400/70 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                              >
-                                <Trash2 size={10} />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-xs text-parchment/20 italic">
-                          {t("needs_portrait")}
-                        </p>
-                      )}
-                    </div>
-                  )}
-
-                  {/* LoRA training section */}
-                  {hasPortrait && (
-                    <div className="border-t border-ink-muted/30 pt-5">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Zap size={14} className="text-emerald-400" />
-                          <h4 className="text-sm font-semibold text-parchment/80">
-                            LoRA
-                          </h4>
-                          {lora?.status === "ready" && (
-                            <span className="text-[10px] text-emerald-400 font-mono">
-                              {lora.trigger_word}
-                            </span>
-                          )}
-                        </div>
-                        {lora?.status === "ready" ? (
-                          <span className="flex items-center gap-1.5 text-xs text-emerald-400">
-                            <CheckCircle2 size={12} />
-                            {t("lora_ready")}
-                          </span>
-                        ) : (
-                          <button
-                            onClick={() => trainLora(char)}
-                            disabled={
-                              isTraining ||
-                              lora?.status === "training" ||
-                              totalTrainingImages < 5
-                            }
-                            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-emerald-900/20 border border-emerald-800/30 text-emerald-400 hover:bg-emerald-900/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            {isTraining || lora?.status === "training" ? (
-                              <Loader2 size={11} className="animate-spin" />
-                            ) : (
-                              <Zap size={11} />
-                            )}
-                            <span>
-                              {isTraining || lora?.status === "training"
-                                ? t("training_lora")
-                                : t("train_lora")}
-                            </span>
-                          </button>
-                        )}
-                      </div>
-                      {totalTrainingImages < 5 && lora?.status !== "ready" && (
-                        <p className="text-[11px] text-parchment/30 mt-2 flex items-center gap-1">
-                          <AlertCircle size={11} />
-                          {t("needs_views")} ({totalTrainingImages}/5)
-                        </p>
-                      )}
-                    </div>
                   )}
                 </div>
               </div>
@@ -805,7 +477,7 @@ export default function CharactersPage() {
         </div>
 
         {/* Navigate to scenes */}
-        {allCharsHaveLora && (
+        {hasAnyPortrait && (
           <div className="mt-10 text-center">
             <Link
               href={`/scenes/${pipelineId}`}
@@ -821,25 +493,12 @@ export default function CharactersPage() {
       {/* Expanded image overlay */}
       {expandedImage &&
         (() => {
-          const isPortrait = expandedImage.type === "portrait";
-          const img = isPortrait
-            ? images.find((i) => i.id === expandedImage.id)
-            : null;
-          const view = !isPortrait
-            ? views.find((v) => v.id === expandedImage.id)
-            : null;
-          const imageUrl = img?.image_url || view?.image_url;
-          if (!imageUrl) return null;
+          const img = images.find((i) => i.id === expandedImage);
+          if (!img) return null;
 
-          const allItems: { id: string; type: "portrait" | "view" }[] = [
-            ...images.map((i) => ({ id: i.id, type: "portrait" as const })),
-            ...views.map((v) => ({ id: v.id, type: "view" as const })),
-          ];
-          const currentIdx = allItems.findIndex(
-            (item) => item.id === expandedImage.id && item.type === expandedImage.type
-          );
+          const currentIdx = images.findIndex((i) => i.id === expandedImage);
           const hasPrev = currentIdx > 0;
-          const hasNext = currentIdx < allItems.length - 1;
+          const hasNext = currentIdx < images.length - 1;
 
           return (
             <div
@@ -858,7 +517,7 @@ export default function CharactersPage() {
               {hasPrev && (
                 <button
                   className="absolute left-4 top-1/2 -translate-y-1/2 p-2 rounded-full bg-ink-soft/80 text-parchment/60 hover:text-parchment hover:bg-ink-soft transition-colors"
-                  onClick={(e) => { e.stopPropagation(); setExpandedImage(allItems[currentIdx - 1]); }}
+                  onClick={(e) => { e.stopPropagation(); setExpandedImage(images[currentIdx - 1].id); }}
                 >
                   <ChevronLeft size={28} />
                 </button>
@@ -866,7 +525,7 @@ export default function CharactersPage() {
               {hasNext && (
                 <button
                   className="absolute right-4 top-1/2 -translate-y-1/2 p-2 rounded-full bg-ink-soft/80 text-parchment/60 hover:text-parchment hover:bg-ink-soft transition-colors"
-                  onClick={(e) => { e.stopPropagation(); setExpandedImage(allItems[currentIdx + 1]); }}
+                  onClick={(e) => { e.stopPropagation(); setExpandedImage(images[currentIdx + 1].id); }}
                 >
                   <ChevronRight size={28} />
                 </button>
@@ -877,36 +536,25 @@ export default function CharactersPage() {
                 onClick={(e) => e.stopPropagation()}
               >
                 <img
-                  src={imageUrl}
-                  alt={img?.name || "Training view"}
+                  src={img.image_url}
+                  alt={img.name}
                   className="max-h-[75vh] max-w-full rounded-xl object-contain"
                 />
                 <div className="text-center">
-                  {img ? (
-                    <>
-                      <p className="text-parchment/70 text-sm font-semibold">
-                        {img.name}
-                      </p>
-                      <p className="text-parchment/30 text-xs mt-1">
-                        {FAL_MODELS.find((m) => m.id === img.model_used)?.label ||
-                          img.model_used}
-                        {img.width && img.height && ` · ${img.width}x${img.height}`}
-                      </p>
-                    </>
-                  ) : view ? (
-                    <p className="text-parchment/30 text-xs">
-                      {t("views_count")} · {view.azimuth}° / {view.elevation}°
-                    </p>
-                  ) : null}
+                  <p className="text-parchment/70 text-sm font-semibold">
+                    {img.name}
+                  </p>
+                  <p className="text-parchment/30 text-xs mt-1">
+                    {FAL_MODELS.find((m) => m.id === img.model_used)?.label ||
+                      img.model_used}
+                    {img.width && img.height && ` · ${img.width}x${img.height}`}
+                  </p>
                   <p className="text-parchment/20 text-[10px] mt-1 font-mono">
-                    {currentIdx + 1} / {allItems.length}
+                    {currentIdx + 1} / {images.length}
                   </p>
                 </div>
                 <button
-                  onClick={() => {
-                    if (isPortrait && img) deleteImage(img.id);
-                    else if (view) deleteView(view.id);
-                  }}
+                  onClick={() => deleteImage(img.id)}
                   className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-red-900/20 border border-red-800/30 text-red-400 hover:bg-red-900/30 transition-colors"
                 >
                   <Trash2 size={12} />

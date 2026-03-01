@@ -8,16 +8,20 @@ interface FalImage {
   url: string;
   width?: number;
   height?: number;
+  content_type?: string;
+  file_name?: string;
+  file_size?: number;
 }
 
 interface FalResult {
-  data: { images?: FalImage[]; seed?: number };
+  data: { images?: FalImage[]; seed?: number; description?: string };
   requestId?: string;
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const { pipelineId, sceneId, prompt, characterIds, characterNames, settingPrompt } = await req.json();
+    const { pipelineId, sceneId, prompt, characterIds, settingPrompt } =
+      await req.json();
 
     if (!pipelineId || !sceneId || !prompt) {
       return NextResponse.json(
@@ -37,92 +41,48 @@ export async function POST(req: NextRequest) {
     const startTime = Date.now();
 
     const charIds: string[] = characterIds || [];
-    const charNames: Record<string, string> = characterNames || {};
-    const loraScale =
-      charIds.length <= 2 ? 1 : charIds.length === 3 ? 0.85 : 0.7;
-    const loras: { path: string; scale: number }[] = [];
-    const triggerMap: Record<string, string> = {};
+    const portraitUrls: string[] = [];
+    const characterRefs: { character_id: string; name: string; image_url: string }[] = [];
 
     if (charIds.length > 0) {
-      const { data: loraRows } = await supabase
-        .from("character_loras")
-        .select("character_id, trigger_word, lora_url")
+      const { data: charRows } = await supabase
+        .from("characters")
+        .select("character_id, name, image_url")
         .eq("pipeline_id", pipelineId)
-        .eq("status", "ready")
-        .in("character_id", charIds);
+        .in("character_id", charIds)
+        .order("created_at", { ascending: false });
 
-      for (const lora of loraRows || []) {
-        loras.push({ path: lora.lora_url, scale: loraScale });
-        triggerMap[lora.character_id] = lora.trigger_word;
+      const seen = new Set<string>();
+      for (const row of charRows || []) {
+        if (seen.has(row.character_id)) continue;
+        seen.add(row.character_id);
+        portraitUrls.push(row.image_url);
+        characterRefs.push({
+          character_id: row.character_id,
+          name: row.name,
+          image_url: row.image_url,
+        });
       }
     }
 
-    let scenePrompt = prompt as string;
-    const unplacedTriggers: string[] = [];
-
-    for (const [charId, triggerWord] of Object.entries(triggerMap)) {
-      const name = charNames[charId];
-      if (!name) {
-        unplacedTriggers.push(triggerWord);
-        continue;
-      }
-
-      const fullNameRegex = new RegExp(
-        name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
-        "gi"
-      );
-      if (fullNameRegex.test(scenePrompt)) {
-        scenePrompt = scenePrompt.replace(fullNameRegex, triggerWord);
-        continue;
-      }
-
-      const parts = name.split(/\s+/).filter((p) => p.length >= 2);
-      let placed = false;
-      for (const part of parts) {
-        const partRegex = new RegExp(
-          part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
-          "gi"
-        );
-        if (partRegex.test(scenePrompt)) {
-          scenePrompt = scenePrompt.replace(partRegex, (match) => {
-            if (!placed) {
-              placed = true;
-              return triggerWord;
-            }
-            return match;
-          });
-          break;
-        }
-      }
-      if (!placed) {
-        unplacedTriggers.push(triggerWord);
-      }
-    }
-
-    const finalPrompt = [
-      settingPrompt || "",
-      scenePrompt,
-      unplacedTriggers.length > 0 ? unplacedTriggers.join(" ") : "",
-    ]
+    const finalPrompt = [settingPrompt || "", prompt]
       .filter(Boolean)
       .join(" ");
 
-    const model =
-      loras.length > 0 ? "fal-ai/flux-lora" : "fal-ai/flux/dev";
+    const model = "fal-ai/nano-banana-2/edit";
 
     console.log(
-      `[scenes] Generating ${sceneId} with ${model}, ${loras.length} LoRA(s) (scale=${loraScale})${settingPrompt ? ", +setting" : ""}${unplacedTriggers.length > 0 ? `, ${unplacedTriggers.length} unplaced` : ""}, prompt: ${finalPrompt.slice(0, 150)}...`
+      `[scenes] Generating ${sceneId} with ${model}, ${portraitUrls.length} ref image(s)${settingPrompt ? ", +setting" : ""}, prompt: ${finalPrompt.slice(0, 150)}...`
     );
 
     const input: Record<string, unknown> = {
       prompt: finalPrompt,
-      image_size: "landscape_16_9",
+      image_urls: portraitUrls,
+      aspect_ratio: "16:9",
       num_images: 1,
+      output_format: "png",
+      resolution: "1K",
     };
-
-    if (loras.length > 0) {
-      input.loras = loras;
-    }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = (await (fal as any).subscribe(model, { input })) as FalResult;
@@ -158,7 +118,7 @@ export async function POST(req: NextRequest) {
 
     const imageBuffer = await imageResponse.arrayBuffer();
     const contentType =
-      imageResponse.headers.get("content-type") || "image/webp";
+      imageResponse.headers.get("content-type") || "image/png";
     const ext = contentType.includes("png")
       ? "png"
       : contentType.includes("jpeg")
@@ -189,7 +149,7 @@ export async function POST(req: NextRequest) {
         scene_id: sceneId,
         prompt: finalPrompt,
         model_used: model,
-        loras_used: loras.length > 0 ? { loras, trigger_map: triggerMap } : null,
+        loras_used: characterRefs.length > 0 ? { character_refs: characterRefs } : null,
         image_url: publicUrlData.publicUrl,
         width: imageWidth,
         height: imageHeight,
