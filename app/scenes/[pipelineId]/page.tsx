@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   Loader2,
   Sparkles,
@@ -14,6 +16,9 @@ import {
   CheckCircle2,
   AlertCircle,
   Users,
+  Plus,
+  Pencil,
+  RotateCcw,
 } from "lucide-react";
 import { useLanguage } from "@/lib/language-context";
 import { PipelineJSON, Scene, Character } from "@/types/pipeline";
@@ -24,7 +29,10 @@ interface SceneImage {
   scene_id: string;
   prompt: string;
   model_used: string;
-  loras_used: { loras: { path: string; scale: number }[]; trigger_words: string[] } | null;
+  loras_used: {
+    loras: { path: string; scale: number }[];
+    trigger_words: string[];
+  } | null;
   image_url: string;
   width: number | null;
   height: number | null;
@@ -40,6 +48,51 @@ interface LoraInfo {
   status: "training" | "ready" | "failed";
 }
 
+function HighlightedPrompt({
+  text,
+  characterNames,
+}: {
+  text: string;
+  characterNames: Map<string, string>;
+}) {
+  if (characterNames.size === 0) {
+    return (
+      <p className="text-[11px] text-parchment/40 font-mono leading-relaxed whitespace-pre-wrap">
+        {text}
+      </p>
+    );
+  }
+
+  const names = Array.from(characterNames.values()).sort(
+    (a, b) => b.length - a.length
+  );
+  const pattern = new RegExp(
+    `(${names.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`,
+    "gi"
+  );
+  const parts = text.split(pattern);
+
+  return (
+    <p className="text-[11px] text-parchment/40 font-mono leading-relaxed whitespace-pre-wrap">
+      {parts.map((part, i) => {
+        const isName = names.some(
+          (n) => n.toLowerCase() === part.toLowerCase()
+        );
+        return isName ? (
+          <span
+            key={i}
+            className="bg-emerald-900/40 text-emerald-300 px-0.5 rounded"
+          >
+            {part}
+          </span>
+        ) : (
+          <span key={i}>{part}</span>
+        );
+      })}
+    </p>
+  );
+}
+
 export default function ScenesPage() {
   const params = useParams();
   const pipelineId = params.pipelineId as string;
@@ -48,12 +101,45 @@ export default function ScenesPage() {
   const [pipeline, setPipeline] = useState<PipelineJSON | null>(null);
   const [sceneImages, setSceneImages] = useState<SceneImage[]>([]);
   const [loras, setLoras] = useState<Record<string, LoraInfo>>({});
-  const [charPortraits, setCharPortraits] = useState<Record<string, string>>({});
+  const [charPortraits, setCharPortraits] = useState<Record<string, string>>(
+    {}
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [generating, setGenerating] = useState<Record<string, boolean>>({});
   const [generatingAll, setGeneratingAll] = useState(false);
   const [expandedImage, setExpandedImage] = useState<string | null>(null);
+
+  const [editedPrompts, setEditedPrompts] = useState<Record<string, string>>(
+    {}
+  );
+  const [editedChars, setEditedChars] = useState<Record<string, string[]>>({});
+  const [editingPrompt, setEditingPrompt] = useState<Record<string, boolean>>(
+    {}
+  );
+
+  const overlayRef = useRef<HTMLDivElement>(null);
+
+  const allCharacters = useMemo(
+    () => pipeline?.characters || [],
+    [pipeline]
+  );
+
+  const getCharName = useCallback(
+    (charId: string): string => {
+      const char = allCharacters.find((c) => c.id === charId);
+      return char?.name || charId;
+    },
+    [allCharacters]
+  );
+
+  const charNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of allCharacters) {
+      map.set(c.id, c.name);
+    }
+    return map;
+  }, [allCharacters]);
 
   useEffect(() => {
     const load = async () => {
@@ -68,6 +154,15 @@ export default function ScenesPage() {
         if (!pipelineRes.ok) throw new Error("Failed to load pipeline");
         const pData = await pipelineRes.json();
         setPipeline(pData.pipeline_data);
+
+        const prompts: Record<string, string> = {};
+        const chars: Record<string, string[]> = {};
+        for (const s of pData.pipeline_data?.scenes || []) {
+          prompts[s.id] = s.image_generation_prompt || "";
+          chars[s.id] = [...(s.characters || [])];
+        }
+        setEditedPrompts(prompts);
+        setEditedChars(chars);
 
         if (scenesRes.ok) {
           const sData = await scenesRes.json();
@@ -98,8 +193,83 @@ export default function ScenesPage() {
     load();
   }, [pipelineId]);
 
+  const addCharToScene = useCallback(
+    (sceneId: string, charId: string) => {
+      setEditedChars((prev) => {
+        const current = prev[sceneId] || [];
+        if (current.includes(charId)) return prev;
+        return { ...prev, [sceneId]: [...current, charId] };
+      });
+
+      const name = getCharName(charId);
+      setEditedPrompts((prev) => {
+        const prompt = prev[sceneId] || "";
+        if (prompt.toLowerCase().includes(name.toLowerCase())) return prev;
+        return { ...prev, [sceneId]: `${name}, ${prompt}` };
+      });
+    },
+    [getCharName]
+  );
+
+  const removeCharFromScene = useCallback(
+    (sceneId: string, charId: string) => {
+      setEditedChars((prev) => {
+        const current = prev[sceneId] || [];
+        return { ...prev, [sceneId]: current.filter((id) => id !== charId) };
+      });
+
+      const name = getCharName(charId);
+      setEditedPrompts((prev) => {
+        const prompt = prev[sceneId] || "";
+        const regex = new RegExp(
+          `${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[,\\s]*`,
+          "gi"
+        );
+        const cleaned = prompt.replace(regex, "").replace(/^[,\s]+/, "").trim();
+        return { ...prev, [sceneId]: cleaned };
+      });
+    },
+    [getCharName]
+  );
+
+  const handlePromptChange = useCallback(
+    (sceneId: string, newPrompt: string) => {
+      setEditedPrompts((prev) => ({ ...prev, [sceneId]: newPrompt }));
+
+      setEditedChars((prev) => {
+        const current = prev[sceneId] || [];
+        const updated = current.filter((charId) => {
+          const name = getCharName(charId);
+          return newPrompt.toLowerCase().includes(name.toLowerCase());
+        });
+        if (updated.length === current.length) return prev;
+        return { ...prev, [sceneId]: updated };
+      });
+    },
+    [getCharName]
+  );
+
+  const resetScene = useCallback(
+    (sceneId: string) => {
+      const scene = pipeline?.scenes?.find((s) => s.id === sceneId);
+      if (!scene) return;
+      setEditedPrompts((prev) => ({
+        ...prev,
+        [sceneId]: scene.image_generation_prompt,
+      }));
+      setEditedChars((prev) => ({
+        ...prev,
+        [sceneId]: [...scene.characters],
+      }));
+    },
+    [pipeline]
+  );
+
   const generateScene = useCallback(
     async (scene: Scene) => {
+      const prompt = editedPrompts[scene.id] || scene.image_generation_prompt;
+      const charIds = editedChars[scene.id] || scene.characters;
+
       setGenerating((prev) => ({ ...prev, [scene.id]: true }));
       try {
         const res = await fetch("/api/scenes/generate", {
@@ -108,12 +278,14 @@ export default function ScenesPage() {
           body: JSON.stringify({
             pipelineId,
             sceneId: scene.id,
-            prompt: scene.image_generation_prompt,
-            characterIds: scene.characters,
+            prompt,
+            characterIds: charIds,
           }),
         });
         if (!res.ok) {
-          const err = await res.json().catch(() => ({ error: "Generation failed" }));
+          const err = await res
+            .json()
+            .catch(() => ({ error: "Generation failed" }));
           throw new Error(err.error || "Generation failed");
         }
         const newImage: SceneImage = await res.json();
@@ -124,7 +296,7 @@ export default function ScenesPage() {
         setGenerating((prev) => ({ ...prev, [scene.id]: false }));
       }
     },
-    [pipelineId, t]
+    [pipelineId, editedPrompts, editedChars, t]
   );
 
   const generateAllScenes = useCallback(async () => {
@@ -156,13 +328,34 @@ export default function ScenesPage() {
     [t, expandedImage]
   );
 
+  // Keyboard navigation for expanded overlay
+  useEffect(() => {
+    if (!expandedImage) return;
+    overlayRef.current?.focus();
+    const currentIdx = sceneImages.findIndex((i) => i.id === expandedImage);
+    const handleKey = (e: KeyboardEvent) => {
+      if (
+        e.key === "ArrowRight" ||
+        e.key === "ArrowLeft" ||
+        e.key === "Escape"
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      if (e.key === "ArrowRight" && currentIdx < sceneImages.length - 1) {
+        setExpandedImage(sceneImages[currentIdx + 1].id);
+      } else if (e.key === "ArrowLeft" && currentIdx > 0) {
+        setExpandedImage(sceneImages[currentIdx - 1].id);
+      } else if (e.key === "Escape") {
+        setExpandedImage(null);
+      }
+    };
+    window.addEventListener("keydown", handleKey, true);
+    return () => window.removeEventListener("keydown", handleKey, true);
+  }, [expandedImage, sceneImages]);
+
   const getSceneImages = (sceneId: string) =>
     sceneImages.filter((img) => img.scene_id === sceneId);
-
-  const getCharName = (charId: string): string => {
-    const char = pipeline?.characters?.find((c) => c.id === charId);
-    return char?.name || charId;
-  };
 
   const getSettingName = (settingId: string): string => {
     const setting = pipeline?.settings?.find((s) => s.id === settingId);
@@ -179,6 +372,17 @@ export default function ScenesPage() {
     return styles[type] || "bg-ink-muted text-parchment/60";
   };
 
+  const isSceneModified = (scene: Scene) => {
+    const promptChanged =
+      editedPrompts[scene.id] !== undefined &&
+      editedPrompts[scene.id] !== scene.image_generation_prompt;
+    const charsChanged =
+      editedChars[scene.id] !== undefined &&
+      JSON.stringify(editedChars[scene.id]?.sort()) !==
+        JSON.stringify([...scene.characters].sort());
+    return promptChanged || charsChanged;
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-ink flex items-center justify-center">
@@ -191,8 +395,13 @@ export default function ScenesPage() {
     return (
       <div className="min-h-screen bg-ink flex items-center justify-center">
         <div className="text-center">
-          <p className="text-red-400/80 text-sm mb-4">{error || "Pipeline not found"}</p>
-          <Link href="/history" className="btn-primary px-6 py-3 rounded-xl text-sm">
+          <p className="text-red-400/80 text-sm mb-4">
+            {error || "Pipeline not found"}
+          </p>
+          <Link
+            href="/history"
+            className="btn-primary px-6 py-3 rounded-xl text-sm"
+          >
             {t("back_to_history")}
           </Link>
         </div>
@@ -215,7 +424,10 @@ export default function ScenesPage() {
           <div className="flex items-center gap-3">
             <div className="film-strip">
               {[...Array(5)].map((_, i) => (
-                <span key={i} style={i === 2 ? { background: "#C8853A" } : {}} />
+                <span
+                  key={i}
+                  style={i === 2 ? { background: "#C8853A" } : {}}
+                />
               ))}
             </div>
             <div>
@@ -225,7 +437,9 @@ export default function ScenesPage() {
               >
                 Story<span className="text-amber-film italic">Pipeline</span>
               </Link>
-              <p className="text-xs text-parchment/30 -mt-0.5">{t("brand_subtitle")}</p>
+              <p className="text-xs text-parchment/30 -mt-0.5">
+                {t("brand_subtitle")}
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-4">
@@ -298,7 +512,9 @@ export default function ScenesPage() {
               <Sparkles size={14} />
             )}
             <span>
-              {generatingAll ? t("generating_all_scenes") : t("generate_all_scenes")}
+              {generatingAll
+                ? t("generating_all_scenes")
+                : t("generate_all_scenes")}
             </span>
           </button>
         </div>
@@ -307,12 +523,25 @@ export default function ScenesPage() {
           {pipeline.scenes?.map((scene) => {
             const imgs = getSceneImages(scene.id);
             const isGen = generating[scene.id];
-            const sceneCharsWithLora = scene.characters.filter(
-              (cId) => loras[cId]?.status === "ready"
+            const sceneChars = editedChars[scene.id] || scene.characters;
+            const scenePrompt =
+              editedPrompts[scene.id] ?? scene.image_generation_prompt;
+            const isEditing = editingPrompt[scene.id];
+            const modified = isSceneModified(scene);
+
+            const allLorasReady =
+              sceneChars.length > 0 &&
+              sceneChars.every((cId) => loras[cId]?.status === "ready");
+            const canGenerate = sceneChars.length > 0 && allLorasReady;
+
+            const availableChars = allCharacters.filter(
+              (c) => !sceneChars.includes(c.id)
             );
-            const allLorasReady = scene.characters.length > 0 &&
-              sceneCharsWithLora.length === scene.characters.length;
-            const someLorasMissing = sceneCharsWithLora.length < scene.characters.length;
+
+            const activeCharNames = new Map<string, string>();
+            for (const cId of sceneChars) {
+              activeCharNames.set(cId, getCharName(cId));
+            }
 
             return (
               <div
@@ -335,14 +564,9 @@ export default function ScenesPage() {
                         <span className="text-[10px] text-parchment/30">
                           {getSettingName(scene.setting_id)}
                         </span>
-                        {allLorasReady && (
-                          <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400">
-                            <CheckCircle2 size={10} />
-                          </span>
-                        )}
-                        {someLorasMissing && (
-                          <span className="inline-flex items-center gap-1 text-[10px] text-amber-400">
-                            <AlertCircle size={10} />
+                        {modified && (
+                          <span className="text-[10px] text-amber-400 italic">
+                            {t("modified")}
                           </span>
                         )}
                       </div>
@@ -355,7 +579,14 @@ export default function ScenesPage() {
                     </div>
                     <button
                       onClick={() => generateScene(scene)}
-                      disabled={isGen}
+                      disabled={isGen || !canGenerate}
+                      title={
+                        !canGenerate
+                          ? sceneChars.length === 0
+                            ? t("add_characters_first")
+                            : t("some_loras_missing")
+                          : undefined
+                      }
                       className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-emerald-900/20 border border-emerald-800/30 text-emerald-400 hover:bg-emerald-900/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
                     >
                       {isGen ? (
@@ -369,64 +600,187 @@ export default function ScenesPage() {
                     </button>
                   </div>
 
-                  {/* Narrative */}
                   <p className="text-sm text-parchment/60 mt-3 leading-relaxed line-clamp-2">
                     {scene.narrative}
                   </p>
-
-                  {/* Characters strip */}
-                  <div className="flex items-center gap-2 mt-3 flex-wrap">
-                    <span className="text-[10px] text-parchment/30 uppercase tracking-wider">
-                      {t("scene_characters")}:
-                    </span>
-                    {scene.characters.map((charId) => {
-                      const hasLora = loras[charId]?.status === "ready";
-                      const portrait = charPortraits[charId];
-                      return (
-                        <div
-                          key={charId}
-                          className="flex items-center gap-1.5"
-                          title={getCharName(charId)}
-                        >
-                          {portrait ? (
-                            <div
-                              className={`w-6 h-6 rounded-full overflow-hidden border-2 ${hasLora ? "border-emerald-400/50" : "border-ink-muted"}`}
-                            >
-                              <img
-                                src={portrait}
-                                alt={getCharName(charId)}
-                                className="w-full h-full object-cover"
-                              />
-                            </div>
-                          ) : (
-                            <div
-                              className={`w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-mono ${hasLora ? "bg-emerald-900/30 text-emerald-400 border border-emerald-800/30" : "bg-ink-muted text-parchment/40"}`}
-                            >
-                              {charId.replace("char_", "")}
-                            </div>
-                          )}
-                          <span className="text-[10px] text-parchment/50">
-                            {getCharName(charId)}
-                          </span>
-                          {!hasLora && (
-                            <AlertCircle
-                              size={10}
-                              className="text-amber-400/60"
-                            />
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
                 </div>
 
                 {/* Scene content */}
                 <div className="p-6 space-y-4">
-                  {/* Prompt preview */}
-                  <div className="bg-ink/60 border border-ink-muted/50 rounded-lg p-3">
-                    <p className="text-[11px] text-parchment/40 font-mono leading-relaxed line-clamp-3">
-                      {scene.image_generation_prompt}
-                    </p>
+                  {/* Characters in scene */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[10px] text-parchment/30 uppercase tracking-wider font-semibold">
+                        {t("scene_characters")}
+                      </span>
+                      {!allLorasReady && sceneChars.length > 0 && (
+                        <span className="flex items-center gap-1 text-[10px] text-amber-400">
+                          <AlertCircle size={10} />
+                          {t("some_loras_missing")}
+                        </span>
+                      )}
+                      {allLorasReady && sceneChars.length > 0 && (
+                        <span className="flex items-center gap-1 text-[10px] text-emerald-400">
+                          <CheckCircle2 size={10} />
+                          {t("all_loras_ready")}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {sceneChars.map((charId) => {
+                        const hasLora = loras[charId]?.status === "ready";
+                        const portrait = charPortraits[charId];
+                        return (
+                          <div
+                            key={charId}
+                            className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-xs transition-colors ${
+                              hasLora
+                                ? "bg-emerald-900/10 border-emerald-800/30 text-emerald-300"
+                                : "bg-ink/40 border-ink-muted text-parchment/50"
+                            }`}
+                          >
+                            {portrait ? (
+                              <div
+                                className={`w-5 h-5 rounded-full overflow-hidden border ${hasLora ? "border-emerald-400/50" : "border-ink-muted"}`}
+                              >
+                                <img
+                                  src={portrait}
+                                  alt={getCharName(charId)}
+                                  className="w-full h-full object-cover"
+                                />
+                              </div>
+                            ) : (
+                              <div
+                                className={`w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-mono ${hasLora ? "bg-emerald-900/30 text-emerald-400" : "bg-ink-muted text-parchment/40"}`}
+                              >
+                                {charId.replace("char_", "")}
+                              </div>
+                            )}
+                            <span>{getCharName(charId)}</span>
+                            {!hasLora && (
+                              <AlertCircle
+                                size={10}
+                                className="text-amber-400/60"
+                              />
+                            )}
+                            <button
+                              onClick={() =>
+                                removeCharFromScene(scene.id, charId)
+                              }
+                              className="ml-0.5 p-0.5 rounded hover:bg-red-900/30 text-parchment/30 hover:text-red-400 transition-colors"
+                            >
+                              <X size={10} />
+                            </button>
+                          </div>
+                        );
+                      })}
+
+                      {/* Add character dropdown */}
+                      {availableChars.length > 0 && (
+                        <div className="relative group">
+                          <button className="flex items-center gap-1 px-2 py-1 rounded-lg border border-dashed border-ink-muted text-[10px] text-parchment/30 hover:text-parchment/60 hover:border-parchment/30 transition-colors">
+                            <Plus size={10} />
+                            {t("add_character")}
+                          </button>
+                          <div className="absolute top-full left-0 mt-1 bg-ink-soft border border-ink-muted rounded-lg shadow-xl z-10 min-w-[180px] py-1 hidden group-hover:block">
+                            {availableChars.map((char) => {
+                              const hasLora =
+                                loras[char.id]?.status === "ready";
+                              return (
+                                <button
+                                  key={char.id}
+                                  onClick={() =>
+                                    addCharToScene(scene.id, char.id)
+                                  }
+                                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-parchment/60 hover:bg-ink-muted/50 hover:text-parchment transition-colors text-left"
+                                >
+                                  {charPortraits[char.id] ? (
+                                    <div className="w-5 h-5 rounded-full overflow-hidden border border-ink-muted shrink-0">
+                                      <img
+                                        src={charPortraits[char.id]}
+                                        alt={char.name}
+                                        className="w-full h-full object-cover"
+                                      />
+                                    </div>
+                                  ) : (
+                                    <div className="w-5 h-5 rounded-full bg-ink-muted flex items-center justify-center text-[8px] font-mono text-parchment/40 shrink-0">
+                                      {char.id.replace("char_", "")}
+                                    </div>
+                                  )}
+                                  <span className="flex-1">{char.name}</span>
+                                  {hasLora ? (
+                                    <CheckCircle2
+                                      size={10}
+                                      className="text-emerald-400 shrink-0"
+                                    />
+                                  ) : (
+                                    <AlertCircle
+                                      size={10}
+                                      className="text-amber-400/60 shrink-0"
+                                    />
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Prompt section */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[10px] text-parchment/30 uppercase tracking-wider font-semibold">
+                        {t("prompt_used")}
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        {modified && (
+                          <button
+                            onClick={() => resetScene(scene.id)}
+                            className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded bg-amber-film/10 border border-amber-film/20 text-amber-glow hover:bg-amber-film/20 transition-colors"
+                          >
+                            <RotateCcw size={10} />
+                            {t("reset_prompt")}
+                          </button>
+                        )}
+                        <button
+                          onClick={() =>
+                            setEditingPrompt((prev) => ({
+                              ...prev,
+                              [scene.id]: !prev[scene.id],
+                            }))
+                          }
+                          className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded border transition-colors ${
+                            isEditing
+                              ? "bg-amber-film/20 border-amber-film/40 text-amber-glow"
+                              : "bg-ink-soft border-ink-muted text-parchment/40 hover:text-parchment/60"
+                          }`}
+                        >
+                          <Pencil size={10} />
+                          {isEditing ? t("editing") : t("edit")}
+                        </button>
+                      </div>
+                    </div>
+                    {isEditing ? (
+                      <textarea
+                        value={scenePrompt}
+                        onChange={(e) =>
+                          handlePromptChange(scene.id, e.target.value)
+                        }
+                        rows={4}
+                        autoFocus
+                        className="w-full bg-ink/60 border border-amber-film/30 rounded-lg p-3 text-[11px] text-parchment/70 font-mono leading-relaxed resize-y focus:outline-none focus:border-amber-film/50 transition-colors"
+                      />
+                    ) : (
+                      <div className="bg-ink/60 border border-ink-muted/50 rounded-lg p-3">
+                        <HighlightedPrompt
+                          text={scenePrompt}
+                          characterNames={activeCharNames}
+                        />
+                      </div>
+                    )}
                   </div>
 
                   {/* Generated scene images */}
@@ -477,9 +831,17 @@ export default function ScenesPage() {
           const img = sceneImages.find((i) => i.id === expandedImage);
           if (!img) return null;
           const scene = pipeline?.scenes?.find((s) => s.id === img.scene_id);
+          const currentIdx = sceneImages.findIndex(
+            (i) => i.id === expandedImage
+          );
+          const hasPrev = currentIdx > 0;
+          const hasNext = currentIdx < sceneImages.length - 1;
+
           return (
             <div
-              className="fixed inset-0 bg-ink/90 z-50 flex items-center justify-center p-6"
+              ref={overlayRef}
+              tabIndex={-1}
+              className="fixed inset-0 bg-ink/90 z-50 flex items-center justify-center p-6 outline-none"
               onClick={() => setExpandedImage(null)}
             >
               <button
@@ -488,6 +850,30 @@ export default function ScenesPage() {
               >
                 <X size={20} />
               </button>
+
+              {hasPrev && (
+                <button
+                  className="absolute left-4 top-1/2 -translate-y-1/2 p-2 rounded-full bg-ink-soft/80 text-parchment/60 hover:text-parchment hover:bg-ink-soft transition-colors"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setExpandedImage(sceneImages[currentIdx - 1].id);
+                  }}
+                >
+                  <ChevronLeft size={28} />
+                </button>
+              )}
+              {hasNext && (
+                <button
+                  className="absolute right-4 top-1/2 -translate-y-1/2 p-2 rounded-full bg-ink-soft/80 text-parchment/60 hover:text-parchment hover:bg-ink-soft transition-colors"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setExpandedImage(sceneImages[currentIdx + 1].id);
+                  }}
+                >
+                  <ChevronRight size={28} />
+                </button>
+              )}
+
               <div
                 className="max-w-5xl max-h-[85vh] w-full flex flex-col items-center gap-4"
                 onClick={(e) => e.stopPropagation()}
@@ -506,9 +892,20 @@ export default function ScenesPage() {
                     {img.loras_used
                       ? ` + ${img.loras_used.trigger_words.join(", ")}`
                       : ""}
-                    {img.width && img.height && ` · ${img.width}x${img.height}`}
+                    {img.width && img.height &&
+                      ` · ${img.width}x${img.height}`}
+                  </p>
+                  <p className="text-parchment/20 text-[10px] mt-1 font-mono">
+                    {currentIdx + 1} / {sceneImages.length}
                   </p>
                 </div>
+                <button
+                  onClick={() => deleteSceneImage(img.id)}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-red-900/20 border border-red-800/30 text-red-400 hover:bg-red-900/30 transition-colors"
+                >
+                  <Trash2 size={12} />
+                  {t("delete_image")}
+                </button>
               </div>
             </div>
           );

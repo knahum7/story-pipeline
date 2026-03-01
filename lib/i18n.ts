@@ -212,6 +212,9 @@ const translations: Record<string, TranslationEntry> = {
   some_loras_missing: { en: "Some character LoRAs missing", tr: "Bazı karakter LoRA'ları eksik" },
   no_scene_images_yet: { en: "No scene images generated yet", tr: "Henüz sahne görseli oluşturulmadı" },
   back_to_characters: { en: "Back to characters", tr: "Karakterlere dön" },
+  add_character: { en: "Add character", tr: "Karakter ekle" },
+  add_characters_first: { en: "Add characters to this scene first", tr: "Önce bu sahneye karakter ekleyin" },
+  modified: { en: "modified", tr: "değiştirildi" },
 
   // Dynamic (with interpolation)
   pages_selected: { en: "page(s) selected", tr: "sayfa seçildi" },
