@@ -76,7 +76,8 @@ export async function POST(req: NextRequest) {
       input.loras = loras;
     }
 
-    const result = (await fal.subscribe(model, { input })) as FalResult;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = (await (fal as any).subscribe(model, { input })) as FalResult;
 
     const images = result.data?.images || [];
     if (!images.length || !images[0].url) {

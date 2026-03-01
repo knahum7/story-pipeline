@@ -102,7 +102,8 @@ export async function POST(req: NextRequest) {
     );
 
     try {
-      const result = (await fal.subscribe(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result = (await (fal as any).subscribe(
         "fal-ai/flux-lora-portrait-trainer",
         {
           input: {
