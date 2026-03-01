@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Clock, FileText, Image, ChevronRight, ArrowLeft, Download, RefreshCw, Loader2 } from "lucide-react";
+import { Clock, FileText, Image, ChevronRight, ArrowLeft, Download, RefreshCw, Loader2, Users } from "lucide-react";
 import Link from "next/link";
 import ResultsViewer from "@/components/ResultsViewer";
 import StreamingOutput from "@/components/StreamingOutput";
@@ -161,6 +161,13 @@ export default function HistoryPage() {
                   </button>
                 </div>
               </div>
+              <Link
+                href={`/characters/${selectedId}`}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-film/10 border border-amber-film/30 hover:bg-amber-film/20 text-amber-glow text-sm transition-all"
+              >
+                <Users size={14} />
+                <span>{t("generate_characters")}</span>
+              </Link>
               <button
                 onClick={downloadJSON}
                 className="flex items-center gap-2 px-4 py-2 rounded-xl bg-ink-soft border border-ink-muted hover:border-amber-film/50 text-parchment/60 hover:text-parchment text-sm transition-all"

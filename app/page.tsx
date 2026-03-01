@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { Download, RefreshCw, ChevronRight, Clock } from "lucide-react";
+import { Download, RefreshCw, ChevronRight, Clock, Users } from "lucide-react";
 import Link from "next/link";
 import StoryUploader from "@/components/StoryUploader";
 import StreamingOutput from "@/components/StreamingOutput";
@@ -407,7 +407,16 @@ export default function Home() {
 
               <div className="flex items-center gap-3">
                 {savedId && (
-                  <span className="text-xs text-green-500/70">{t("saved")}</span>
+                  <>
+                    <span className="text-xs text-green-500/70">{t("saved")}</span>
+                    <Link
+                      href={`/characters/${savedId}`}
+                      className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-film/10 border border-amber-film/30 hover:bg-amber-film/20 text-amber-glow text-sm transition-all"
+                    >
+                      <Users size={14} />
+                      <span>{t("generate_characters")}</span>
+                    </Link>
+                  </>
                 )}
                 {saveError && (
                   <span className="text-xs text-red-400/70">{t("save_failed")}</span>
