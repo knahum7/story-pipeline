@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -20,6 +20,7 @@ import {
   AlertCircle,
   Film,
   RotateCcw,
+  Pencil,
 } from "lucide-react";
 import { useLanguage } from "@/lib/language-context";
 import { FAL_MODELS, DEFAULT_MODEL } from "@/lib/fal-models";
@@ -78,6 +79,7 @@ export default function CharactersPage() {
   const [expandedImage, setExpandedImage] = useState<{ id: string; type: "portrait" | "view" } | null>(null);
   const [selectedPortrait, setSelectedPortrait] = useState<Record<string, string>>({});
   const [editedPrompts, setEditedPrompts] = useState<Record<string, string>>({});
+  const [editingPrompt, setEditingPrompt] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     const load = async () => {
@@ -260,8 +262,11 @@ export default function CharactersPage() {
     [t, expandedImage]
   );
 
+  const overlayRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     if (!expandedImage) return;
+    overlayRef.current?.focus();
     const allItems: { id: string; type: "portrait" | "view" }[] = [
       ...images.map((img) => ({ id: img.id, type: "portrait" as const })),
       ...views.map((v) => ({ id: v.id, type: "view" as const })),
@@ -270,6 +275,10 @@ export default function CharactersPage() {
       (item) => item.id === expandedImage.id && item.type === expandedImage.type
     );
     const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowRight" || e.key === "ArrowLeft" || e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+      }
       if (e.key === "ArrowRight" && currentIdx < allItems.length - 1) {
         setExpandedImage(allItems[currentIdx + 1]);
       } else if (e.key === "ArrowLeft" && currentIdx > 0) {
@@ -278,8 +287,8 @@ export default function CharactersPage() {
         setExpandedImage(null);
       }
     };
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
+    window.addEventListener("keydown", handleKey, true);
+    return () => window.removeEventListener("keydown", handleKey, true);
   }, [expandedImage, images, views]);
 
   const getCharImages = (charId: string) =>
@@ -522,31 +531,63 @@ export default function CharactersPage() {
                 </div>
 
                 <div className="p-6 space-y-5">
-                  {/* Editable prompt */}
-                  <div className="relative">
-                    <textarea
-                      value={editedPrompts[char.id] ?? char.image_generation_prompt}
-                      onChange={(e) =>
-                        setEditedPrompts((prev) => ({ ...prev, [char.id]: e.target.value }))
-                      }
-                      rows={3}
-                      className="w-full bg-ink/60 border border-ink-muted/50 rounded-lg p-3 text-[11px] text-parchment/60 font-mono leading-relaxed resize-y focus:outline-none focus:border-amber-film/40 transition-colors"
-                    />
-                    {editedPrompts[char.id] !== undefined &&
-                      editedPrompts[char.id] !== char.image_generation_prompt && (
+                  {/* Prompt section */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[10px] text-parchment/30 uppercase tracking-wider font-semibold">
+                        {t("prompt_used")}
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        {editedPrompts[char.id] !== undefined &&
+                          editedPrompts[char.id] !== char.image_generation_prompt && (
+                            <button
+                              onClick={() =>
+                                setEditedPrompts((prev) => ({
+                                  ...prev,
+                                  [char.id]: char.image_generation_prompt,
+                                }))
+                              }
+                              className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded bg-amber-film/10 border border-amber-film/20 text-amber-glow hover:bg-amber-film/20 transition-colors"
+                            >
+                              <RotateCcw size={10} />
+                              {t("reset_prompt")}
+                            </button>
+                          )}
                         <button
                           onClick={() =>
-                            setEditedPrompts((prev) => ({
+                            setEditingPrompt((prev) => ({
                               ...prev,
-                              [char.id]: char.image_generation_prompt,
+                              [char.id]: !prev[char.id],
                             }))
                           }
-                          title={t("reset_prompt")}
-                          className="absolute top-2 right-2 p-1 rounded bg-ink-soft/80 text-parchment/30 hover:text-amber-film transition-colors"
+                          className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded border transition-colors ${
+                            editingPrompt[char.id]
+                              ? "bg-amber-film/20 border-amber-film/40 text-amber-glow"
+                              : "bg-ink-soft border-ink-muted text-parchment/40 hover:text-parchment/60"
+                          }`}
                         >
-                          <RotateCcw size={12} />
+                          <Pencil size={10} />
+                          {editingPrompt[char.id] ? t("editing") : t("edit")}
                         </button>
-                      )}
+                      </div>
+                    </div>
+                    {editingPrompt[char.id] ? (
+                      <textarea
+                        value={editedPrompts[char.id] ?? char.image_generation_prompt}
+                        onChange={(e) =>
+                          setEditedPrompts((prev) => ({ ...prev, [char.id]: e.target.value }))
+                        }
+                        rows={4}
+                        autoFocus
+                        className="w-full bg-ink/60 border border-amber-film/30 rounded-lg p-3 text-[11px] text-parchment/70 font-mono leading-relaxed resize-y focus:outline-none focus:border-amber-film/50 transition-colors"
+                      />
+                    ) : (
+                      <div className="bg-ink/60 border border-ink-muted/50 rounded-lg p-3">
+                        <p className="text-[11px] text-parchment/40 font-mono leading-relaxed line-clamp-3">
+                          {editedPrompts[char.id] ?? char.image_generation_prompt}
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   {/* Portrait gallery */}
@@ -769,7 +810,9 @@ export default function CharactersPage() {
 
           return (
             <div
-              className="fixed inset-0 bg-ink/90 z-50 flex items-center justify-center p-6"
+              ref={overlayRef}
+              tabIndex={-1}
+              className="fixed inset-0 bg-ink/90 z-50 flex items-center justify-center p-6 outline-none"
               onClick={() => setExpandedImage(null)}
             >
               <button

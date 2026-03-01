@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fal } from "@fal-ai/client";
 import { getSupabase } from "@/lib/supabase";
+import archiver from "archiver";
+import { PassThrough } from "stream";
 
 fal.config({ credentials: () => process.env.FAL_KEY || "" });
 
@@ -10,6 +12,36 @@ interface FalLoraResult {
     config_file?: { url: string };
   };
   requestId?: string;
+}
+
+async function createZipFromUrls(imageUrls: string[]): Promise<Buffer> {
+  const archive = archiver("zip", { zlib: { level: 0 } });
+  const passThrough = new PassThrough();
+  const chunks: Buffer[] = [];
+
+  passThrough.on("data", (chunk: Buffer) => chunks.push(chunk));
+  archive.pipe(passThrough);
+
+  for (let i = 0; i < imageUrls.length; i++) {
+    const res = await fetch(imageUrls[i]);
+    if (!res.ok) {
+      console.warn(`[train-lora] Failed to download image ${i}: ${res.status}`);
+      continue;
+    }
+    const buffer = Buffer.from(await res.arrayBuffer());
+    const contentType = res.headers.get("content-type") || "image/webp";
+    const ext = contentType.includes("png")
+      ? "png"
+      : contentType.includes("jpeg") || contentType.includes("jpg")
+        ? "jpg"
+        : "webp";
+    archive.append(buffer, { name: `image_${String(i).padStart(3, "0")}.${ext}` });
+  }
+
+  await archive.finalize();
+  await new Promise<void>((resolve) => passThrough.on("end", resolve));
+
+  return Buffer.concat(chunks);
 }
 
 export async function POST(req: NextRequest) {
@@ -75,6 +107,36 @@ export async function POST(req: NextRequest) {
 
     const triggerWord = `${characterId}_${characterName.toLowerCase().replace(/[^a-z0-9]/g, "_")}`;
 
+    console.log(
+      `[train-lora] Preparing zip for "${characterName}" (${characterId}) with ${imageUrls.length} images`
+    );
+
+    const zipBuffer = await createZipFromUrls(imageUrls);
+    console.log(`[train-lora] Zip created: ${(zipBuffer.length / 1024).toFixed(0)} KB`);
+
+    const zipPath = `${pipelineId}/${characterId}/training-${Date.now()}.zip`;
+    const { error: uploadError } = await supabase.storage
+      .from("character-views")
+      .upload(zipPath, zipBuffer, {
+        contentType: "application/zip",
+        upsert: true,
+      });
+
+    if (uploadError) {
+      console.error("[train-lora] Zip upload error:", uploadError.message);
+      return NextResponse.json(
+        { error: `Failed to upload training data: ${uploadError.message}` },
+        { status: 500 }
+      );
+    }
+
+    const { data: publicUrlData } = supabase.storage
+      .from("character-views")
+      .getPublicUrl(zipPath);
+
+    const zipUrl = publicUrlData.publicUrl;
+    console.log(`[train-lora] Zip uploaded: ${zipUrl}`);
+
     const { data: loraRow, error: insertError } = await supabase
       .from("character_loras")
       .insert({
@@ -98,7 +160,7 @@ export async function POST(req: NextRequest) {
 
     const startTime = Date.now();
     console.log(
-      `[train-lora] Starting training for "${characterName}" (${characterId}) with ${imageUrls.length} images, trigger: "${triggerWord}"`
+      `[train-lora] Starting fal.ai training for "${characterName}", trigger: "${triggerWord}"`
     );
 
     try {
@@ -107,7 +169,7 @@ export async function POST(req: NextRequest) {
         "fal-ai/flux-lora-portrait-trainer",
         {
           input: {
-            images_data_url: imageUrls,
+            images_data_url: zipUrl,
             trigger_word: triggerWord,
             steps: 1000,
             is_style: false,
@@ -122,8 +184,7 @@ export async function POST(req: NextRequest) {
           : "no data"
       );
 
-      const loraUrl =
-        result.data?.diffusers_lora_file?.url;
+      const loraUrl = result.data?.diffusers_lora_file?.url;
 
       if (!loraUrl) {
         console.error(
