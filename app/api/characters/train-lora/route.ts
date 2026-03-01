@@ -8,11 +8,13 @@ fal.config({ credentials: () => process.env.FAL_KEY || "" });
 
 async function createZipFromUrls(imageUrls: string[]): Promise<Buffer> {
   const archive = archiver("zip", { zlib: { level: 0 } });
-  const passThrough = new PassThrough();
   const chunks: Buffer[] = [];
 
-  passThrough.on("data", (chunk: Buffer) => chunks.push(chunk));
-  archive.pipe(passThrough);
+  const done = new Promise<Buffer>((resolve, reject) => {
+    archive.on("data", (chunk: Buffer) => chunks.push(chunk));
+    archive.on("end", () => resolve(Buffer.concat(chunks)));
+    archive.on("error", (err) => reject(err));
+  });
 
   for (let i = 0; i < imageUrls.length; i++) {
     console.log(`[train-lora] Downloading image ${i + 1}/${imageUrls.length}...`);
@@ -34,9 +36,8 @@ async function createZipFromUrls(imageUrls: string[]): Promise<Buffer> {
 
   console.log("[train-lora] Finalizing zip...");
   await archive.finalize();
-  await new Promise<void>((resolve) => passThrough.on("end", resolve));
 
-  return Buffer.concat(chunks);
+  return done;
 }
 
 export async function POST(req: NextRequest) {
