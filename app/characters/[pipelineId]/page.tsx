@@ -5,6 +5,8 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   Loader2,
   Sparkles,
@@ -17,6 +19,7 @@ import {
   CheckCircle2,
   AlertCircle,
   Film,
+  RotateCcw,
 } from "lucide-react";
 import { useLanguage } from "@/lib/language-context";
 import { FAL_MODELS, DEFAULT_MODEL } from "@/lib/fal-models";
@@ -74,6 +77,7 @@ export default function CharactersPage() {
   const [trainingLora, setTrainingLora] = useState<Record<string, boolean>>({});
   const [expandedImage, setExpandedImage] = useState<{ id: string; type: "portrait" | "view" } | null>(null);
   const [selectedPortrait, setSelectedPortrait] = useState<Record<string, string>>({});
+  const [editedPrompts, setEditedPrompts] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const load = async () => {
@@ -87,6 +91,12 @@ export default function CharactersPage() {
         if (!pipelineRes.ok) throw new Error("Failed to load pipeline");
         const pData = await pipelineRes.json();
         setPipeline(pData.pipeline_data);
+
+        const prompts: Record<string, string> = {};
+        for (const c of pData.pipeline_data?.characters || []) {
+          prompts[c.id] = c.image_generation_prompt || "";
+        }
+        setEditedPrompts(prompts);
 
         if (charsRes.ok) {
           const cData = await charsRes.json();
@@ -109,6 +119,7 @@ export default function CharactersPage() {
 
   const generateImage = useCallback(
     async (char: Character) => {
+      const prompt = editedPrompts[char.id] || char.image_generation_prompt;
       setGenerating((prev) => ({ ...prev, [char.id]: true }));
       try {
         const res = await fetch("/api/characters/generate", {
@@ -118,7 +129,7 @@ export default function CharactersPage() {
             pipelineId,
             characterId: char.id,
             name: char.name,
-            prompt: char.image_generation_prompt,
+            prompt,
             model: selectedModel,
           }),
         });
@@ -134,7 +145,7 @@ export default function CharactersPage() {
         setGenerating((prev) => ({ ...prev, [char.id]: false }));
       }
     },
-    [pipelineId, selectedModel, t]
+    [pipelineId, selectedModel, editedPrompts, t]
   );
 
   const generateAllPortraits = useCallback(async () => {
@@ -248,6 +259,28 @@ export default function CharactersPage() {
     },
     [t, expandedImage]
   );
+
+  useEffect(() => {
+    if (!expandedImage) return;
+    const allItems: { id: string; type: "portrait" | "view" }[] = [
+      ...images.map((img) => ({ id: img.id, type: "portrait" as const })),
+      ...views.map((v) => ({ id: v.id, type: "view" as const })),
+    ];
+    const currentIdx = allItems.findIndex(
+      (item) => item.id === expandedImage.id && item.type === expandedImage.type
+    );
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowRight" && currentIdx < allItems.length - 1) {
+        setExpandedImage(allItems[currentIdx + 1]);
+      } else if (e.key === "ArrowLeft" && currentIdx > 0) {
+        setExpandedImage(allItems[currentIdx - 1]);
+      } else if (e.key === "Escape") {
+        setExpandedImage(null);
+      }
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [expandedImage, images, views]);
 
   const getCharImages = (charId: string) =>
     images.filter((img) => img.character_id === charId);
@@ -489,11 +522,31 @@ export default function CharactersPage() {
                 </div>
 
                 <div className="p-6 space-y-5">
-                  {/* Prompt preview */}
-                  <div className="bg-ink/60 border border-ink-muted/50 rounded-lg p-3">
-                    <p className="text-[11px] text-parchment/40 font-mono leading-relaxed line-clamp-3">
-                      {char.image_generation_prompt}
-                    </p>
+                  {/* Editable prompt */}
+                  <div className="relative">
+                    <textarea
+                      value={editedPrompts[char.id] ?? char.image_generation_prompt}
+                      onChange={(e) =>
+                        setEditedPrompts((prev) => ({ ...prev, [char.id]: e.target.value }))
+                      }
+                      rows={3}
+                      className="w-full bg-ink/60 border border-ink-muted/50 rounded-lg p-3 text-[11px] text-parchment/60 font-mono leading-relaxed resize-y focus:outline-none focus:border-amber-film/40 transition-colors"
+                    />
+                    {editedPrompts[char.id] !== undefined &&
+                      editedPrompts[char.id] !== char.image_generation_prompt && (
+                        <button
+                          onClick={() =>
+                            setEditedPrompts((prev) => ({
+                              ...prev,
+                              [char.id]: char.image_generation_prompt,
+                            }))
+                          }
+                          title={t("reset_prompt")}
+                          className="absolute top-2 right-2 p-1 rounded bg-ink-soft/80 text-parchment/30 hover:text-amber-film transition-colors"
+                        >
+                          <RotateCcw size={12} />
+                        </button>
+                      )}
                   </div>
 
                   {/* Portrait gallery */}
@@ -703,6 +756,17 @@ export default function CharactersPage() {
             : null;
           const imageUrl = img?.image_url || view?.image_url;
           if (!imageUrl) return null;
+
+          const allItems: { id: string; type: "portrait" | "view" }[] = [
+            ...images.map((i) => ({ id: i.id, type: "portrait" as const })),
+            ...views.map((v) => ({ id: v.id, type: "view" as const })),
+          ];
+          const currentIdx = allItems.findIndex(
+            (item) => item.id === expandedImage.id && item.type === expandedImage.type
+          );
+          const hasPrev = currentIdx > 0;
+          const hasNext = currentIdx < allItems.length - 1;
+
           return (
             <div
               className="fixed inset-0 bg-ink/90 z-50 flex items-center justify-center p-6"
@@ -714,6 +778,24 @@ export default function CharactersPage() {
               >
                 <X size={20} />
               </button>
+
+              {hasPrev && (
+                <button
+                  className="absolute left-4 top-1/2 -translate-y-1/2 p-2 rounded-full bg-ink-soft/80 text-parchment/60 hover:text-parchment hover:bg-ink-soft transition-colors"
+                  onClick={(e) => { e.stopPropagation(); setExpandedImage(allItems[currentIdx - 1]); }}
+                >
+                  <ChevronLeft size={28} />
+                </button>
+              )}
+              {hasNext && (
+                <button
+                  className="absolute right-4 top-1/2 -translate-y-1/2 p-2 rounded-full bg-ink-soft/80 text-parchment/60 hover:text-parchment hover:bg-ink-soft transition-colors"
+                  onClick={(e) => { e.stopPropagation(); setExpandedImage(allItems[currentIdx + 1]); }}
+                >
+                  <ChevronRight size={28} />
+                </button>
+              )}
+
               <div
                 className="max-w-4xl max-h-[85vh] w-full flex flex-col items-center gap-4"
                 onClick={(e) => e.stopPropagation()}
@@ -740,6 +822,9 @@ export default function CharactersPage() {
                       {t("views_count")} · {view.azimuth}° / {view.elevation}°
                     </p>
                   ) : null}
+                  <p className="text-parchment/20 text-[10px] mt-1 font-mono">
+                    {currentIdx + 1} / {allItems.length}
+                  </p>
                 </div>
                 <button
                   onClick={() => {
