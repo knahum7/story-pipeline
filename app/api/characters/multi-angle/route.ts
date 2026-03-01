@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
           "fal-ai/flux-2-lora-gallery/multiple-angles",
           {
             input: {
-              image_url: sourceImageUrl,
+              image_urls: [sourceImageUrl],
               horizontal_angle: preset.azimuth,
               vertical_angle: preset.elevation,
             },
