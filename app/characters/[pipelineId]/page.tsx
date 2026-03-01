@@ -169,6 +169,7 @@ export default function CharactersPage() {
       if (!portrait) return;
 
       setGeneratingViews((prev) => ({ ...prev, [charId]: true }));
+      setViews((prev) => prev.filter((v) => v.character_id !== charId));
       try {
         const res = await fetch("/api/characters/multi-angle", {
           method: "POST",
@@ -487,7 +488,7 @@ export default function CharactersPage() {
             const isTraining = trainingLora[char.id];
             const hasPortrait = charImages.length > 0;
             const hasViews = charViews.length > 0;
-            const totalTrainingImages = charImages.length + charViews.length;
+            const totalTrainingImages = charViews.length;
 
             return (
               <div

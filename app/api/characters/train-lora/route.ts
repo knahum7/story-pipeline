@@ -60,26 +60,21 @@ export async function POST(req: NextRequest) {
 
     const supabase = getSupabase();
 
-    const { data: existing } = await supabase
+    const { data: oldLoras } = await supabase
       .from("character_loras")
-      .select("id")
-      .eq("pipeline_id", pipelineId)
-      .eq("character_id", characterId)
-      .eq("status", "training")
-      .maybeSingle();
-
-    if (existing) {
-      return NextResponse.json(
-        { error: "A LoRA is already being trained for this character" },
-        { status: 409 }
-      );
-    }
-
-    const { data: portraits } = await supabase
-      .from("characters")
-      .select("image_url")
+      .select("id, status")
       .eq("pipeline_id", pipelineId)
       .eq("character_id", characterId);
+
+    if (oldLoras && oldLoras.length > 0) {
+      await supabase
+        .from("character_loras")
+        .delete()
+        .eq("pipeline_id", pipelineId)
+        .eq("character_id", characterId);
+
+      console.log(`[train-lora] Removed ${oldLoras.length} old LoRA record(s) for ${characterId}`);
+    }
 
     const { data: views } = await supabase
       .from("character_views")
@@ -87,15 +82,12 @@ export async function POST(req: NextRequest) {
       .eq("pipeline_id", pipelineId)
       .eq("character_id", characterId);
 
-    const imageUrls = [
-      ...(portraits || []).map((p) => p.image_url),
-      ...(views || []).map((v) => v.image_url),
-    ];
+    const imageUrls = (views || []).map((v) => v.image_url);
 
     if (imageUrls.length < 5) {
       return NextResponse.json(
         {
-          error: `Need at least 5 images for LoRA training. Currently have ${imageUrls.length}. Generate a portrait and training views first.`,
+          error: `Need at least 5 training views for LoRA training. Currently have ${imageUrls.length}. Generate more training views first.`,
         },
         { status: 400 }
       );

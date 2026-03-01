@@ -47,6 +47,40 @@ export async function POST(req: NextRequest) {
     }
 
     const supabase = getSupabase();
+
+    // Remove previous views for this character
+    const { data: oldViews } = await supabase
+      .from("character_views")
+      .select("id, image_url")
+      .eq("pipeline_id", pipelineId)
+      .eq("character_id", characterId);
+
+    if (oldViews && oldViews.length > 0) {
+      const storagePaths = oldViews
+        .map((v) => {
+          try {
+            const url = new URL(v.image_url);
+            const path = url.pathname.split("/character-views/")[1];
+            return path ? decodeURIComponent(path) : null;
+          } catch {
+            return null;
+          }
+        })
+        .filter(Boolean) as string[];
+
+      if (storagePaths.length > 0) {
+        await supabase.storage.from("character-views").remove(storagePaths);
+      }
+
+      await supabase
+        .from("character_views")
+        .delete()
+        .eq("pipeline_id", pipelineId)
+        .eq("character_id", characterId);
+
+      console.log(`[multi-angle] Removed ${oldViews.length} old views for ${characterId}`);
+    }
+
     const startTime = Date.now();
     console.log(`[multi-angle] Generating ${ANGLE_PRESETS.length} views for ${characterId}`);
 
