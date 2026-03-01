@@ -57,6 +57,8 @@ export async function POST(req: NextRequest) {
     }
 
     const client = getVisionClient();
+    const startTime = Date.now();
+    console.log(`[extract-text] Starting OCR for ${files.length} image(s): ${files.map((f) => f.name).join(", ")}`);
 
     const ocrResults = await Promise.all(
       files.map(async (file) => {
@@ -67,6 +69,7 @@ export async function POST(req: NextRequest) {
         });
 
         const fullText = result.fullTextAnnotation?.text || "";
+        console.log(`[extract-text] ${file.name}: ${fullText.length} chars extracted`);
         return { name: file.name, text: fullText };
       })
     );
@@ -76,7 +79,10 @@ export async function POST(req: NextRequest) {
       .filter(Boolean)
       .join("\n\n");
 
+    console.log(`[extract-text] OCR complete in ${((Date.now() - startTime) / 1000).toFixed(1)}s — ${extractedText.length} total chars, ${extractedText.trim().split(/\s+/).length} words`);
+
     if (!extractedText) {
+      console.error("[extract-text] No text extracted from any image");
       return NextResponse.json(
         { error: "No text could be extracted from the uploaded images. Try clearer photos." },
         { status: 422 }

@@ -30,7 +30,7 @@ async function streamClaude(
 ): Promise<boolean> {
   const anthropicStream = await anthropic.messages.stream({
     model: "claude-sonnet-4-20250514",
-    max_tokens: 16000,
+    max_tokens: 64000,
     system: PIPELINE_SYSTEM_PROMPT,
     messages: [
       { role: "user", content: buildUserPrompt(storyText) },
@@ -58,7 +58,7 @@ async function streamOpenAI(
   const client = getOpenAIClient();
   const openaiStream = await client.chat.completions.create({
     model: "gpt-4o",
-    max_tokens: 16000,
+    max_tokens: 16384,
     stream: true,
     messages: [
       { role: "system", content: PIPELINE_SYSTEM_PROMPT },
@@ -102,13 +102,25 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const storyLength = storyText.length;
+    const wordCount = storyText.trim().split(/\s+/).length;
+    console.log(`[parse-story] Starting pipeline — ${wordCount} words, ${storyLength} chars`);
+
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
+        const startTime = Date.now();
+
         try {
+          console.log("[parse-story] Attempting Claude (claude-sonnet-4-20250514)...");
           await streamClaude(storyText, controller, encoder);
+          console.log(`[parse-story] Claude completed in ${((Date.now() - startTime) / 1000).toFixed(1)}s`);
         } catch (claudeErr) {
+          const claudeMsg = claudeErr instanceof Error ? claudeErr.message : "Unknown error";
+          console.log(`[parse-story] Claude failed: ${claudeMsg}`);
+
           if (isContentFilterError(claudeErr) && process.env.OPENAI_API_KEY) {
+            console.log("[parse-story] Content filter detected — falling back to GPT-4o...");
             controller.enqueue(
               encoder.encode(
                 `data: ${JSON.stringify({ fallback: "openai", reason: "Content filter triggered — switching to GPT-4o" })}\n\n`
@@ -117,8 +129,10 @@ export async function POST(req: NextRequest) {
 
             try {
               await streamOpenAI(storyText, controller, encoder);
+              console.log(`[parse-story] GPT-4o completed in ${((Date.now() - startTime) / 1000).toFixed(1)}s`);
             } catch (openaiErr) {
               const message = openaiErr instanceof Error ? openaiErr.message : "Unknown error";
+              console.error(`[parse-story] GPT-4o fallback failed: ${message}`);
               controller.enqueue(
                 encoder.encode(`data: ${JSON.stringify({ error: `OpenAI fallback failed: ${message}` })}\n\n`)
               );
@@ -126,9 +140,9 @@ export async function POST(req: NextRequest) {
               return;
             }
           } else {
-            const message = claudeErr instanceof Error ? claudeErr.message : "Unknown error";
+            console.error(`[parse-story] Fatal error: ${claudeMsg}`);
             controller.enqueue(
-              encoder.encode(`data: ${JSON.stringify({ error: message })}\n\n`)
+              encoder.encode(`data: ${JSON.stringify({ error: claudeMsg })}\n\n`)
             );
             controller.close();
             return;

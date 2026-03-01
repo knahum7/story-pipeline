@@ -61,7 +61,10 @@ export default function Home() {
               }
               if (data.done) {
                 try {
-                  const parsed = JSON.parse(accumulated);
+                  let jsonStr = accumulated.trim();
+                  // Strip markdown code fences if the model wrapped the output
+                  jsonStr = jsonStr.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/, "");
+                  const parsed = JSON.parse(jsonStr);
                   setParsedData(parsed);
                   setStatus("done");
                 } catch {
