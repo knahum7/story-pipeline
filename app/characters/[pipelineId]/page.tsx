@@ -12,7 +12,11 @@ import {
   X,
   ChevronDown,
   Users,
-  ImageIcon,
+  Eye,
+  Zap,
+  CheckCircle2,
+  AlertCircle,
+  Film,
 } from "lucide-react";
 import { useLanguage } from "@/lib/language-context";
 import { FAL_MODELS, DEFAULT_MODEL } from "@/lib/fal-models";
@@ -32,6 +36,26 @@ interface GeneratedImage {
   created_at: string;
 }
 
+interface CharacterView {
+  id: string;
+  pipeline_id: string;
+  character_id: string;
+  azimuth: number;
+  elevation: number;
+  image_url: string;
+  created_at: string;
+}
+
+interface LoraInfo {
+  id: string;
+  character_id: string;
+  trigger_word: string;
+  lora_url: string;
+  training_images_count: number;
+  status: "training" | "ready" | "failed";
+  created_at: string;
+}
+
 export default function CharactersPage() {
   const params = useParams();
   const pipelineId = params.pipelineId as string;
@@ -39,19 +63,24 @@ export default function CharactersPage() {
 
   const [pipeline, setPipeline] = useState<PipelineJSON | null>(null);
   const [images, setImages] = useState<GeneratedImage[]>([]);
+  const [views, setViews] = useState<CharacterView[]>([]);
+  const [loras, setLoras] = useState<Record<string, LoraInfo>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL);
   const [generating, setGenerating] = useState<Record<string, boolean>>({});
   const [generatingAll, setGeneratingAll] = useState(false);
+  const [generatingViews, setGeneratingViews] = useState<Record<string, boolean>>({});
+  const [trainingLora, setTrainingLora] = useState<Record<string, boolean>>({});
   const [expandedImage, setExpandedImage] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
       try {
-        const [pipelineRes, charsRes] = await Promise.all([
+        const [pipelineRes, charsRes, lorasRes] = await Promise.all([
           fetch(`/api/pipelines/${pipelineId}`),
           fetch(`/api/characters?pipeline_id=${pipelineId}`),
+          fetch(`/api/characters/loras?pipeline_id=${pipelineId}`),
         ]);
 
         if (!pipelineRes.ok) throw new Error("Failed to load pipeline");
@@ -61,6 +90,12 @@ export default function CharactersPage() {
         if (charsRes.ok) {
           const cData = await charsRes.json();
           setImages(cData.characters || []);
+        }
+
+        if (lorasRes.ok) {
+          const lData = await lorasRes.json();
+          setLoras(lData.loras || {});
+          setViews(lData.views || []);
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load");
@@ -74,7 +109,6 @@ export default function CharactersPage() {
   const generateImage = useCallback(
     async (char: Character) => {
       setGenerating((prev) => ({ ...prev, [char.id]: true }));
-
       try {
         const res = await fetch("/api/characters/generate", {
           method: "POST",
@@ -87,17 +121,14 @@ export default function CharactersPage() {
             model: selectedModel,
           }),
         });
-
         if (!res.ok) {
           const err = await res.json().catch(() => ({ error: "Generation failed" }));
           throw new Error(err.error || "Generation failed");
         }
-
         const newImage: GeneratedImage = await res.json();
         setImages((prev) => [...prev, newImage]);
       } catch (err) {
-        const msg = err instanceof Error ? err.message : t("generation_failed");
-        alert(msg);
+        alert(err instanceof Error ? err.message : t("generation_failed"));
       } finally {
         setGenerating((prev) => ({ ...prev, [char.id]: false }));
       }
@@ -108,25 +139,80 @@ export default function CharactersPage() {
   const generateAllPortraits = useCallback(async () => {
     if (!pipeline?.characters) return;
     setGeneratingAll(true);
-
     for (const char of pipeline.characters) {
       await generateImage(char);
     }
-
     setGeneratingAll(false);
   }, [pipeline, generateImage]);
+
+  const generateViews = useCallback(
+    async (charId: string) => {
+      const portrait = images.find((img) => img.character_id === charId);
+      if (!portrait) return;
+
+      setGeneratingViews((prev) => ({ ...prev, [charId]: true }));
+      try {
+        const res = await fetch("/api/characters/multi-angle", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            pipelineId,
+            characterId: charId,
+            sourceImageUrl: portrait.image_url,
+          }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: "Failed" }));
+          throw new Error(err.error || "Failed to generate views");
+        }
+        const data = await res.json();
+        setViews((prev) => [...prev, ...(data.views || [])]);
+      } catch (err) {
+        alert(err instanceof Error ? err.message : t("generation_failed"));
+      } finally {
+        setGeneratingViews((prev) => ({ ...prev, [charId]: false }));
+      }
+    },
+    [pipelineId, images, t]
+  );
+
+  const trainLora = useCallback(
+    async (char: Character) => {
+      setTrainingLora((prev) => ({ ...prev, [char.id]: true }));
+      try {
+        const res = await fetch("/api/characters/train-lora", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            pipelineId,
+            characterId: char.id,
+            characterName: char.name,
+          }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: "Training failed" }));
+          throw new Error(err.error || "Training failed");
+        }
+        const data = await res.json();
+        setLoras((prev) => ({ ...prev, [char.id]: data }));
+      } catch (err) {
+        alert(err instanceof Error ? err.message : t("generation_failed"));
+      } finally {
+        setTrainingLora((prev) => ({ ...prev, [char.id]: false }));
+      }
+    },
+    [pipelineId, t]
+  );
 
   const deleteImage = useCallback(
     async (id: string) => {
       if (!confirm(t("confirm_delete"))) return;
-
       try {
         const res = await fetch("/api/characters", {
           method: "DELETE",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ id }),
         });
-
         if (res.ok) {
           setImages((prev) => prev.filter((img) => img.id !== id));
           if (expandedImage === id) setExpandedImage(null);
@@ -140,6 +226,15 @@ export default function CharactersPage() {
 
   const getCharImages = (charId: string) =>
     images.filter((img) => img.character_id === charId);
+
+  const getCharViews = (charId: string) =>
+    views.filter((v) => v.character_id === charId);
+
+  const getLoraStatus = (charId: string): LoraInfo | null =>
+    loras[charId] || null;
+
+  const allCharsHaveLora =
+    pipeline?.characters?.every((c) => loras[c.id]?.status === "ready") ?? false;
 
   if (loading) {
     return (
@@ -198,6 +293,15 @@ export default function CharactersPage() {
               <Clock size={13} />
               <span>{t("history")}</span>
             </Link>
+            {allCharsHaveLora && (
+              <Link
+                href={`/scenes/${pipelineId}`}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-emerald-900/20 border border-emerald-800/30 text-emerald-400 hover:bg-emerald-900/30 transition-colors"
+              >
+                <Film size={13} />
+                <span>{t("generate_scenes")}</span>
+              </Link>
+            )}
             <div className="flex rounded-lg overflow-hidden border border-ink-muted text-[11px]">
               <button
                 onClick={() => setLang("en")}
@@ -217,7 +321,6 @@ export default function CharactersPage() {
       </header>
 
       <main className="max-w-7xl mx-auto px-6 py-10">
-        {/* Back link + title */}
         <Link
           href="/history"
           className="flex items-center gap-2 text-sm text-parchment/50 hover:text-parchment transition-colors mb-6"
@@ -241,9 +344,7 @@ export default function CharactersPage() {
             </p>
           </div>
 
-          {/* Global controls */}
           <div className="flex items-center gap-3 flex-wrap">
-            {/* Model selector */}
             <div className="relative">
               <select
                 value={selectedModel}
@@ -262,7 +363,6 @@ export default function CharactersPage() {
               />
             </div>
 
-            {/* Generate all button */}
             <button
               onClick={generateAllPortraits}
               disabled={generatingAll || !pipeline.characters?.length}
@@ -278,11 +378,17 @@ export default function CharactersPage() {
           </div>
         </div>
 
-        {/* Character cards */}
         <div className="space-y-6">
           {pipeline.characters?.map((char) => {
             const charImages = getCharImages(char.id);
+            const charViews = getCharViews(char.id);
+            const lora = getLoraStatus(char.id);
             const isGen = generating[char.id];
+            const isGenViews = generatingViews[char.id];
+            const isTraining = trainingLora[char.id];
+            const hasPortrait = charImages.length > 0;
+            const hasViews = charViews.length > 0;
+            const totalTrainingImages = charImages.length + charViews.length;
 
             return (
               <div
@@ -306,6 +412,19 @@ export default function CharactersPage() {
                         >
                           {char.role}
                         </span>
+                        {/* LoRA status badge */}
+                        {lora?.status === "ready" && (
+                          <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-emerald-900/30 text-emerald-400 font-mono">
+                            <CheckCircle2 size={10} />
+                            {t("lora_ready")}
+                          </span>
+                        )}
+                        {(lora?.status === "training" || isTraining) && (
+                          <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-blue-900/30 text-blue-400 font-mono">
+                            <Loader2 size={10} className="animate-spin" />
+                            {t("lora_training")}
+                          </span>
+                        )}
                       </div>
                       <h3 className="font-display text-xl font-semibold text-parchment">
                         {char.name}
@@ -314,13 +433,11 @@ export default function CharactersPage() {
                         {char.emotional_role}
                       </p>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
                       <div className="text-right text-xs text-parchment/30 shrink-0">
                         <p>{char.age_current}</p>
                         {char.age_alternate && (
-                          <p className="text-parchment/20">
-                            ({char.age_alternate})
-                          </p>
+                          <p className="text-parchment/20">({char.age_alternate})</p>
                         )}
                       </div>
                       <button
@@ -333,9 +450,7 @@ export default function CharactersPage() {
                         ) : (
                           <Sparkles size={11} />
                         )}
-                        <span>
-                          {isGen ? t("generating") : t("generate")}
-                        </span>
+                        <span>{isGen ? t("generating") : t("generate")}</span>
                       </button>
                     </div>
                   </div>
@@ -348,16 +463,15 @@ export default function CharactersPage() {
                   </p>
                 </div>
 
-                {/* Generation section */}
-                <div className="p-6">
+                <div className="p-6 space-y-5">
                   {/* Prompt preview */}
-                  <div className="bg-ink/60 border border-ink-muted/50 rounded-lg p-3 mb-3">
+                  <div className="bg-ink/60 border border-ink-muted/50 rounded-lg p-3">
                     <p className="text-[11px] text-parchment/40 font-mono leading-relaxed line-clamp-3">
                       {char.image_generation_prompt}
                     </p>
                   </div>
 
-                  {/* Generated images */}
+                  {/* Portrait gallery */}
                   {charImages.length > 0 ? (
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                       {charImages.map((img) => (
@@ -389,50 +503,168 @@ export default function CharactersPage() {
                       {t("no_images_yet")}
                     </p>
                   )}
+
+                  {/* Multi-angle views section */}
+                  {hasPortrait && (
+                    <div className="border-t border-ink-muted/30 pt-5">
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="text-sm font-semibold text-parchment/80 flex items-center gap-2">
+                          <Eye size={14} className="text-blue-400" />
+                          {t("views_count")}
+                          {charViews.length > 0 && (
+                            <span className="text-xs font-mono text-parchment/40">
+                              ({charViews.length}/10)
+                            </span>
+                          )}
+                        </h4>
+                        <button
+                          onClick={() => generateViews(char.id)}
+                          disabled={isGenViews || !hasPortrait}
+                          className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-blue-900/20 border border-blue-800/30 text-blue-400 hover:bg-blue-900/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {isGenViews ? (
+                            <Loader2 size={11} className="animate-spin" />
+                          ) : (
+                            <Eye size={11} />
+                          )}
+                          <span>
+                            {isGenViews ? t("generating_views") : t("generate_views")}
+                          </span>
+                        </button>
+                      </div>
+
+                      {hasViews ? (
+                        <div className="grid grid-cols-5 sm:grid-cols-10 gap-2">
+                          {charViews.map((view) => (
+                            <div key={view.id} className="relative">
+                              <div className="w-full aspect-square rounded-md overflow-hidden border border-ink-muted">
+                                <img
+                                  src={view.image_url}
+                                  alt={`${char.name} view`}
+                                  className="w-full h-full object-cover"
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-parchment/20 italic">
+                          {t("needs_portrait")}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* LoRA training section */}
+                  {hasPortrait && (
+                    <div className="border-t border-ink-muted/30 pt-5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Zap size={14} className="text-emerald-400" />
+                          <h4 className="text-sm font-semibold text-parchment/80">
+                            LoRA
+                          </h4>
+                          {lora?.status === "ready" && (
+                            <span className="text-[10px] text-emerald-400 font-mono">
+                              {lora.trigger_word}
+                            </span>
+                          )}
+                        </div>
+                        {lora?.status === "ready" ? (
+                          <span className="flex items-center gap-1.5 text-xs text-emerald-400">
+                            <CheckCircle2 size={12} />
+                            {t("lora_ready")}
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => trainLora(char)}
+                            disabled={
+                              isTraining ||
+                              lora?.status === "training" ||
+                              totalTrainingImages < 5
+                            }
+                            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-emerald-900/20 border border-emerald-800/30 text-emerald-400 hover:bg-emerald-900/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {isTraining || lora?.status === "training" ? (
+                              <Loader2 size={11} className="animate-spin" />
+                            ) : (
+                              <Zap size={11} />
+                            )}
+                            <span>
+                              {isTraining || lora?.status === "training"
+                                ? t("training_lora")
+                                : t("train_lora")}
+                            </span>
+                          </button>
+                        )}
+                      </div>
+                      {totalTrainingImages < 5 && lora?.status !== "ready" && (
+                        <p className="text-[11px] text-parchment/30 mt-2 flex items-center gap-1">
+                          <AlertCircle size={11} />
+                          {t("needs_views")} ({totalTrainingImages}/5)
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             );
           })}
         </div>
+
+        {/* Navigate to scenes */}
+        {allCharsHaveLora && (
+          <div className="mt-10 text-center">
+            <Link
+              href={`/scenes/${pipelineId}`}
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-emerald-900/20 border border-emerald-800/30 text-emerald-400 hover:bg-emerald-900/30 transition-colors text-sm"
+            >
+              <Film size={16} />
+              {t("generate_scenes")}
+            </Link>
+          </div>
+        )}
       </main>
 
       {/* Expanded image overlay */}
-      {expandedImage && (() => {
-        const img = images.find((i) => i.id === expandedImage);
-        if (!img) return null;
-        return (
-          <div
-            className="fixed inset-0 bg-ink/90 z-50 flex items-center justify-center p-6"
-            onClick={() => setExpandedImage(null)}
-          >
-            <button
-              className="absolute top-6 right-6 p-2 rounded-lg bg-ink-soft text-parchment/50 hover:text-parchment transition-colors"
+      {expandedImage &&
+        (() => {
+          const img = images.find((i) => i.id === expandedImage);
+          if (!img) return null;
+          return (
+            <div
+              className="fixed inset-0 bg-ink/90 z-50 flex items-center justify-center p-6"
               onClick={() => setExpandedImage(null)}
             >
-              <X size={20} />
-            </button>
-            <div
-              className="max-w-4xl max-h-[85vh] w-full flex flex-col items-center gap-4"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <img
-                src={img.image_url}
-                alt={img.name}
-                className="max-h-[75vh] max-w-full rounded-xl object-contain"
-              />
-              <div className="text-center">
-                <p className="text-parchment/70 text-sm font-semibold">
-                  {img.name}
-                </p>
-                <p className="text-parchment/30 text-xs mt-1">
-                  {FAL_MODELS.find((m) => m.id === img.model_used)?.label || img.model_used}
-                  {img.width && img.height && ` · ${img.width}x${img.height}`}
-                </p>
+              <button
+                className="absolute top-6 right-6 p-2 rounded-lg bg-ink-soft text-parchment/50 hover:text-parchment transition-colors"
+                onClick={() => setExpandedImage(null)}
+              >
+                <X size={20} />
+              </button>
+              <div
+                className="max-w-4xl max-h-[85vh] w-full flex flex-col items-center gap-4"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <img
+                  src={img.image_url}
+                  alt={img.name}
+                  className="max-h-[75vh] max-w-full rounded-xl object-contain"
+                />
+                <div className="text-center">
+                  <p className="text-parchment/70 text-sm font-semibold">
+                    {img.name}
+                  </p>
+                  <p className="text-parchment/30 text-xs mt-1">
+                    {FAL_MODELS.find((m) => m.id === img.model_used)?.label ||
+                      img.model_used}
+                    {img.width && img.height && ` · ${img.width}x${img.height}`}
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
-        );
-      })()}
+          );
+        })()}
 
       <footer className="border-t border-ink-muted/30 mt-20 py-6">
         <div className="max-w-7xl mx-auto px-6 flex items-center justify-between text-xs text-parchment/20">

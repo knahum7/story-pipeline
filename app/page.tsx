@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { Download, RefreshCw, ChevronRight, Clock, Users } from "lucide-react";
+import { Download, RefreshCw, ChevronRight, Clock, Users, Film } from "lucide-react";
 import Link from "next/link";
 import StoryUploader from "@/components/StoryUploader";
 import StreamingOutput from "@/components/StreamingOutput";
@@ -415,6 +415,13 @@ export default function Home() {
                     >
                       <Users size={14} />
                       <span>{t("generate_characters")}</span>
+                    </Link>
+                    <Link
+                      href={`/scenes/${savedId}`}
+                      className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-900/20 border border-emerald-800/30 hover:bg-emerald-900/30 text-emerald-400 text-sm transition-all"
+                    >
+                      <Film size={14} />
+                      <span>{t("generate_scenes")}</span>
                     </Link>
                   </>
                 )}

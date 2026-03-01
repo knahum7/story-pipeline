@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Clock, FileText, Image, ChevronRight, ArrowLeft, Download, RefreshCw, Loader2, Users } from "lucide-react";
+import { Clock, FileText, Image, ChevronRight, ArrowLeft, Download, RefreshCw, Loader2, Users, Film } from "lucide-react";
 import Link from "next/link";
 import ResultsViewer from "@/components/ResultsViewer";
 import StreamingOutput from "@/components/StreamingOutput";
@@ -167,6 +167,13 @@ export default function HistoryPage() {
               >
                 <Users size={14} />
                 <span>{t("generate_characters")}</span>
+              </Link>
+              <Link
+                href={`/scenes/${selectedId}`}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-900/20 border border-emerald-800/30 hover:bg-emerald-900/30 text-emerald-400 text-sm transition-all"
+              >
+                <Film size={14} />
+                <span>{t("generate_scenes")}</span>
               </Link>
               <button
                 onClick={downloadJSON}
