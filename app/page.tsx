@@ -13,6 +13,7 @@ export default function Home() {
   const [parsedData, setParsedData] = useState<PipelineJSON | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<"json" | "visual">("visual");
+  const [isExtracting, setIsExtracting] = useState(false);
 
   const processStory = useCallback(async (storyText: string) => {
     setStatus("processing");
@@ -51,7 +52,6 @@ export default function Home() {
               const data = JSON.parse(line.slice(6));
               if (data.error) throw new Error(data.error);
               if (data.done) {
-                // Parse the accumulated JSON
                 try {
                   const parsed = JSON.parse(accumulated);
                   setParsedData(parsed);
@@ -80,6 +80,40 @@ export default function Home() {
       setStatus("error");
     }
   }, []);
+
+  const processImages = useCallback(async (files: File[]) => {
+    setIsExtracting(true);
+    setError(null);
+
+    try {
+      const formData = new FormData();
+      files.forEach((file) => formData.append("images", file));
+
+      const response = await fetch("/api/extract-text", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || "Text extraction failed");
+      }
+
+      const { text } = await response.json();
+
+      if (!text || text.trim().length < 100) {
+        throw new Error("Extracted text is too short. Try uploading clearer images or more pages.");
+      }
+
+      setIsExtracting(false);
+      await processStory(text);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      setError(message);
+      setStatus("error");
+      setIsExtracting(false);
+    }
+  }, [processStory]);
 
   const downloadJSON = () => {
     if (!rawText) return;
@@ -146,7 +180,7 @@ export default function Home() {
 
       <main className="max-w-7xl mx-auto px-6 py-10">
         {/* Hero — shown when idle */}
-        {status === "idle" && (
+        {status === "idle" && !isExtracting && (
           <div className="max-w-2xl mx-auto">
             <div className="text-center mb-10 animate-fade-up">
               <div className="inline-flex items-center gap-2 bg-amber-film/10 border border-amber-film/20 rounded-full px-4 py-1.5 text-xs text-amber-glow mb-6">
@@ -160,14 +194,15 @@ export default function Home() {
                 <span className="text-amber-film italic">an animated film</span>
               </h2>
               <p className="text-parchment/50 text-lg leading-relaxed max-w-lg mx-auto">
-                Upload or paste any written story. Claude extracts every character, scene,
-                and setting — then generates all prompts and instructions needed to animate it.
+                Paste text, upload a file, or snap photos of book pages. Claude extracts every
+                character, scene, and setting — then generates all prompts and instructions
+                needed to animate it.
               </p>
             </div>
 
             {/* Pipeline steps visual */}
             <div className="flex items-center justify-center gap-2 mb-10 animate-fade-up delay-100">
-              {["Upload Story", "Parse with AI", "Get Prompts", "Animate"].map((step, i) => (
+              {["Upload Story or Photos", "Parse with AI", "Get Prompts", "Animate"].map((step, i) => (
                 <div key={i} className="flex items-center gap-2">
                   <div className="flex items-center gap-1.5 bg-ink-soft border border-ink-muted rounded-lg px-3 py-1.5">
                     <span className="text-xs font-mono text-amber-film">{i + 1}</span>
@@ -179,20 +214,33 @@ export default function Home() {
             </div>
 
             <div className="animate-fade-up delay-200">
-              <StoryUploader onSubmit={processStory} isProcessing={isProcessing} />
+              <StoryUploader
+                onSubmit={processStory}
+                onImagesSubmit={processImages}
+                isProcessing={isProcessing}
+                isExtracting={isExtracting}
+              />
             </div>
           </div>
         )}
 
         {/* Processing / streaming state */}
-        {(isProcessing || (isDone && !parsedData)) && (
+        {(isExtracting || isProcessing || (isDone && !parsedData)) && (
           <div className="max-w-4xl mx-auto animate-fade-up">
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-parchment font-semibold">
-                  {status === "processing" ? "Sending to Claude..." : "Building pipeline..."}
+                  {isExtracting
+                    ? "Extracting text from images..."
+                    : status === "processing"
+                      ? "Sending to Claude..."
+                      : "Building pipeline..."}
                 </h3>
-                <p className="text-xs text-parchment/40 mt-0.5">This usually takes 30–90 seconds</p>
+                <p className="text-xs text-parchment/40 mt-0.5">
+                  {isExtracting
+                    ? "Reading your pages with Claude Vision"
+                    : "This usually takes 30–90 seconds"}
+                </p>
               </div>
               <div className="flex gap-2">
                 {rawText && (
