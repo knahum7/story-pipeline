@@ -88,28 +88,24 @@ function CharacterCard({ char }: { char: Character }) {
 
       <p className="text-sm text-parchment/70 leading-relaxed">{char.personality}</p>
 
-      <div className="grid grid-cols-2 gap-2 text-xs">
-        <div>
-          <span className="text-parchment/30 block mb-1">{t("hair")}</span>
-          <span className="text-parchment/70">{char.physical_description.hair}</span>
-        </div>
-        <div>
-          <span className="text-parchment/30 block mb-1">{t("build")}</span>
-          <span className="text-parchment/70">{char.physical_description.build}</span>
-        </div>
-        <div className="col-span-2">
-          <span className="text-parchment/30 block mb-1">{t("style")}</span>
-          <span className="text-parchment/70">{char.physical_description.style}</span>
-        </div>
-      </div>
-
       <div className="bg-ink border border-ink-muted rounded-lg p-3">
         <div className="flex items-center gap-2 mb-1.5">
           <Mic size={11} className="text-amber-film" />
           <span className="text-xs text-amber-film font-mono">{t("voice")}</span>
         </div>
-        <p className="text-xs text-parchment/60">{char.voice_profile.tone}</p>
-        <p className="text-xs text-amber-glow mt-1">ElevenLabs: {char.voice_profile.elevenlabs_suggestion}</p>
+        {typeof char.voice_profile === "string" ? (
+          <p className="text-xs text-parchment/60">{char.voice_profile}</p>
+        ) : (
+          <>
+            <p className="text-xs text-parchment/60">{char.voice_profile.tone}</p>
+            {char.voice_profile.speech_patterns && (
+              <p className="text-xs text-parchment/50 mt-1">{char.voice_profile.speech_patterns}</p>
+            )}
+            {char.voice_profile.elevenlabs_suggestion && (
+              <p className="text-xs text-amber-glow mt-1">ElevenLabs: {char.voice_profile.elevenlabs_suggestion}</p>
+            )}
+          </>
+        )}
       </div>
 
       <PromptBox label={t("portrait_prompt")} prompt={char.image_generation_prompt} />

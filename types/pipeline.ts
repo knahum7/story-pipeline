@@ -22,11 +22,11 @@ export interface Character {
   emotional_role: string;
   age_current: string;
   age_alternate?: string;
-  physical_description: PhysicalDescription;
+  physical_description: PhysicalDescription | string;
   personality: string;
   backstory: string;
   arc: string;
-  voice_profile: VoiceProfile;
+  voice_profile: VoiceProfile | string;
   image_generation_prompt: string;
 }
 

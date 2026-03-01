@@ -19,9 +19,12 @@ import {
   Plus,
   Pencil,
   RotateCcw,
+  MapPin,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { useLanguage } from "@/lib/language-context";
-import { PipelineJSON, Scene, Character } from "@/types/pipeline";
+import { PipelineJSON, Scene, Character, Setting } from "@/types/pipeline";
 
 interface SceneImage {
   id: string;
@@ -118,6 +121,19 @@ export default function ScenesPage() {
     {}
   );
 
+  const [includeSetting, setIncludeSetting] = useState<Record<string, boolean>>(
+    {}
+  );
+  const [editedSettingPrompts, setEditedSettingPrompts] = useState<
+    Record<string, string>
+  >({});
+  const [editingSettingPrompt, setEditingSettingPrompt] = useState<
+    Record<string, boolean>
+  >({});
+  const [settingCollapsed, setSettingCollapsed] = useState<
+    Record<string, boolean>
+  >({});
+
   const overlayRef = useRef<HTMLDivElement>(null);
 
   const allCharacters = useMemo(
@@ -141,6 +157,13 @@ export default function ScenesPage() {
     return map;
   }, [allCharacters]);
 
+  const getSettingForScene = useCallback(
+    (settingId: string): Setting | undefined => {
+      return pipeline?.settings?.find((s) => s.id === settingId);
+    },
+    [pipeline]
+  );
+
   useEffect(() => {
     const load = async () => {
       try {
@@ -157,12 +180,22 @@ export default function ScenesPage() {
 
         const prompts: Record<string, string> = {};
         const chars: Record<string, string[]> = {};
-        for (const s of pData.pipeline_data?.scenes || []) {
+        const settingToggles: Record<string, boolean> = {};
+        const settingPrompts: Record<string, string> = {};
+        const pipelineData = pData.pipeline_data;
+        for (const s of pipelineData?.scenes || []) {
           prompts[s.id] = s.image_generation_prompt || "";
           chars[s.id] = [...(s.characters || [])];
+          settingToggles[s.id] = true;
+          const setting = pipelineData?.settings?.find(
+            (st: Setting) => st.id === s.setting_id
+          );
+          settingPrompts[s.id] = setting?.image_generation_prompt || "";
         }
         setEditedPrompts(prompts);
         setEditedChars(chars);
+        setIncludeSetting(settingToggles);
+        setEditedSettingPrompts(settingPrompts);
 
         if (scenesRes.ok) {
           const sData = await scenesRes.json();
@@ -261,6 +294,17 @@ export default function ScenesPage() {
         ...prev,
         [sceneId]: [...scene.characters],
       }));
+      setIncludeSetting((prev) => ({ ...prev, [sceneId]: true }));
+      const setting = pipeline?.settings?.find(
+        (s) => s.id === scene.setting_id
+      );
+      if (setting) {
+        setEditedSettingPrompts((prev) => ({
+          ...prev,
+          [sceneId]: setting.image_generation_prompt,
+        }));
+      }
+      setEditingSettingPrompt((prev) => ({ ...prev, [sceneId]: false }));
     },
     [pipeline]
   );
@@ -269,6 +313,9 @@ export default function ScenesPage() {
     async (scene: Scene) => {
       const prompt = editedPrompts[scene.id] || scene.image_generation_prompt;
       const charIds = editedChars[scene.id] || scene.characters;
+      const useSettingPrompt =
+        includeSetting[scene.id] !== false &&
+        editedSettingPrompts[scene.id];
 
       setGenerating((prev) => ({ ...prev, [scene.id]: true }));
       try {
@@ -280,6 +327,7 @@ export default function ScenesPage() {
             sceneId: scene.id,
             prompt,
             characterIds: charIds,
+            settingPrompt: useSettingPrompt || undefined,
           }),
         });
         if (!res.ok) {
@@ -296,7 +344,7 @@ export default function ScenesPage() {
         setGenerating((prev) => ({ ...prev, [scene.id]: false }));
       }
     },
-    [pipelineId, editedPrompts, editedChars, t]
+    [pipelineId, editedPrompts, editedChars, includeSetting, editedSettingPrompts, t]
   );
 
   const generateAllScenes = useCallback(async () => {
@@ -380,7 +428,15 @@ export default function ScenesPage() {
       editedChars[scene.id] !== undefined &&
       JSON.stringify(editedChars[scene.id]?.sort()) !==
         JSON.stringify([...scene.characters].sort());
-    return promptChanged || charsChanged;
+    const settingToggleChanged = includeSetting[scene.id] === false;
+    const setting = pipeline?.settings?.find(
+      (s) => s.id === scene.setting_id
+    );
+    const settingPromptChanged =
+      setting &&
+      editedSettingPrompts[scene.id] !== undefined &&
+      editedSettingPrompts[scene.id] !== setting.image_generation_prompt;
+    return promptChanged || charsChanged || settingToggleChanged || !!settingPromptChanged;
   };
 
   if (loading) {
@@ -728,6 +784,128 @@ export default function ScenesPage() {
                       )}
                     </div>
                   </div>
+
+                  {/* Setting prompt section */}
+                  {(() => {
+                    const setting = getSettingForScene(scene.setting_id);
+                    if (!setting) return null;
+                    const isSettingOn = includeSetting[scene.id] !== false;
+                    const isSettingCollapsed = settingCollapsed[scene.id];
+                    const isSettingEditing = editingSettingPrompt[scene.id];
+                    const settingPromptText =
+                      editedSettingPrompts[scene.id] ??
+                      setting.image_generation_prompt;
+                    const settingPromptModified =
+                      settingPromptText !== setting.image_generation_prompt;
+
+                    return (
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="flex items-center gap-2 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={isSettingOn}
+                              onChange={() =>
+                                setIncludeSetting((prev) => ({
+                                  ...prev,
+                                  [scene.id]: !prev[scene.id],
+                                }))
+                              }
+                              className="accent-cyan-500 w-3.5 h-3.5"
+                            />
+                            <MapPin size={11} className="text-cyan-400" />
+                            <span className="text-[10px] text-parchment/30 uppercase tracking-wider font-semibold">
+                              {t("include_setting")}
+                            </span>
+                            <span className="text-[10px] text-cyan-400/70 font-mono normal-case">
+                              {setting.name}
+                            </span>
+                          </label>
+                          {isSettingOn && (
+                            <div className="flex items-center gap-1.5">
+                              {settingPromptModified && (
+                                <button
+                                  onClick={() => {
+                                    setEditedSettingPrompts((prev) => ({
+                                      ...prev,
+                                      [scene.id]:
+                                        setting.image_generation_prompt,
+                                    }));
+                                    setEditingSettingPrompt((prev) => ({
+                                      ...prev,
+                                      [scene.id]: false,
+                                    }));
+                                  }}
+                                  className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded bg-amber-film/10 border border-amber-film/20 text-amber-glow hover:bg-amber-film/20 transition-colors"
+                                >
+                                  <RotateCcw size={10} />
+                                  {t("reset_prompt")}
+                                </button>
+                              )}
+                              <button
+                                onClick={() =>
+                                  setEditingSettingPrompt((prev) => ({
+                                    ...prev,
+                                    [scene.id]: !prev[scene.id],
+                                  }))
+                                }
+                                className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded border transition-colors ${
+                                  isSettingEditing
+                                    ? "bg-cyan-900/20 border-cyan-700/40 text-cyan-300"
+                                    : "bg-ink-soft border-ink-muted text-parchment/40 hover:text-parchment/60"
+                                }`}
+                              >
+                                <Pencil size={10} />
+                                {isSettingEditing ? t("editing") : t("edit")}
+                              </button>
+                              <button
+                                onClick={() =>
+                                  setSettingCollapsed((prev) => ({
+                                    ...prev,
+                                    [scene.id]: !prev[scene.id],
+                                  }))
+                                }
+                                className="p-0.5 rounded text-parchment/30 hover:text-parchment/60 transition-colors"
+                              >
+                                {isSettingCollapsed ? (
+                                  <ChevronDown size={12} />
+                                ) : (
+                                  <ChevronUp size={12} />
+                                )}
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        {isSettingOn && !isSettingCollapsed && (
+                          <div className="border border-cyan-800/30 bg-cyan-950/10 rounded-lg p-3">
+                            {isSettingEditing ? (
+                              <textarea
+                                value={settingPromptText}
+                                onChange={(e) =>
+                                  setEditedSettingPrompts((prev) => ({
+                                    ...prev,
+                                    [scene.id]: e.target.value,
+                                  }))
+                                }
+                                rows={3}
+                                autoFocus
+                                className="w-full bg-ink/60 border border-cyan-700/30 rounded-lg p-3 text-[11px] text-parchment/70 font-mono leading-relaxed resize-y focus:outline-none focus:border-cyan-600/50 transition-colors"
+                              />
+                            ) : (
+                              <p className="text-[11px] text-parchment/40 font-mono leading-relaxed whitespace-pre-wrap">
+                                {settingPromptText}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                        {!isSettingOn && (
+                          <p className="text-[10px] text-parchment/20 italic">
+                            {t("setting_excluded")}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   {/* Prompt section */}
                   <div>

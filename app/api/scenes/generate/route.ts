@@ -17,7 +17,7 @@ interface FalResult {
 
 export async function POST(req: NextRequest) {
   try {
-    const { pipelineId, sceneId, prompt, characterIds } = await req.json();
+    const { pipelineId, sceneId, prompt, characterIds, settingPrompt } = await req.json();
 
     if (!pipelineId || !sceneId || !prompt) {
       return NextResponse.json(
@@ -54,16 +54,19 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const finalPrompt =
-      triggerWords.length > 0
-        ? `${triggerWords.join(" ")} ${prompt}`
-        : prompt;
+    const finalPrompt = [
+      triggerWords.length > 0 ? triggerWords.join(" ") : "",
+      settingPrompt || "",
+      prompt,
+    ]
+      .filter(Boolean)
+      .join(" ");
 
     const model =
       loras.length > 0 ? "fal-ai/flux-lora" : "fal-ai/flux/dev";
 
     console.log(
-      `[scenes] Generating ${sceneId} with ${model}, ${loras.length} LoRA(s), prompt: ${finalPrompt.slice(0, 100)}...`
+      `[scenes] Generating ${sceneId} with ${model}, ${loras.length} LoRA(s)${settingPrompt ? ", +setting" : ""}, prompt: ${finalPrompt.slice(0, 120)}...`
     );
 
     const input: Record<string, unknown> = {

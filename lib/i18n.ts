@@ -101,9 +101,6 @@ const translations: Record<string, TranslationEntry> = {
   by_author: { en: "by", tr: "yazar:" },
   copy: { en: "Copy", tr: "Kopyala" },
   copied: { en: "Copied!", tr: "Kopyalandı!" },
-  hair: { en: "Hair", tr: "Saç" },
-  build: { en: "Build", tr: "Yapı" },
-  style: { en: "Style", tr: "Stil" },
   voice: { en: "Voice", tr: "Ses" },
   portrait_prompt: { en: "Portrait Prompt", tr: "Portre Komutu" },
   subtext: { en: "SUBTEXT", tr: "ALT METİN" },
@@ -215,6 +212,9 @@ const translations: Record<string, TranslationEntry> = {
   add_character: { en: "Add character", tr: "Karakter ekle" },
   add_characters_first: { en: "Add characters to this scene first", tr: "Önce bu sahneye karakter ekleyin" },
   modified: { en: "modified", tr: "değiştirildi" },
+  include_setting: { en: "Include Setting", tr: "Mekan Dahil Et" },
+  setting_prompt: { en: "Setting Prompt", tr: "Mekan Komut Metni" },
+  setting_excluded: { en: "Setting excluded from prompt", tr: "Mekan komuttan hariç" },
 
   // Dynamic (with interpolation)
   pages_selected: { en: "page(s) selected", tr: "sayfa seçildi" },
