@@ -27,7 +27,6 @@ export async function POST(req: NextRequest) {
       prompt,
       model,
       referenceUrls,
-      settingPrompt,
       characterNames,
     } = await req.json();
 
@@ -57,12 +56,10 @@ export async function POST(req: NextRequest) {
     const startTime = Date.now();
 
     const refs: string[] = referenceUrls || [];
-    const finalPrompt = [settingPrompt || "", prompt]
-      .filter(Boolean)
-      .join(" ");
+    const finalPrompt = prompt;
 
     console.log(
-      `[scenes] Generating ${sceneId} with ${model}, ${refs.length} ref(s)${settingPrompt ? ", +setting" : ""}, prompt: ${finalPrompt.slice(0, 150)}...`
+      `[scenes] Generating ${sceneId} with ${model}, ${refs.length} ref(s), prompt: ${finalPrompt.slice(0, 150)}...`
     );
 
     const sizeParams = getSceneInput(modelConfig);

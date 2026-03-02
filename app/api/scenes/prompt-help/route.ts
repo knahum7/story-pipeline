@@ -7,7 +7,7 @@ const anthropic = new Anthropic({
 
 const SYSTEM_PROMPT = `You are a cinematic scene prompt engineer for AI image generation models (FLUX, Stable Diffusion, Midjourney style).
 
-Given a scene title, narrative description, emotional tone, character names, and optional setting description, produce a single detailed image generation prompt optimized for generating a high-quality cinematic scene illustration in 9:16 vertical/mobile format.
+Given a scene title, optional narration text, and character names, produce a single detailed image generation prompt optimized for generating a high-quality cinematic scene illustration in 9:16 vertical/mobile format.
 
 FORMAT your prompt as: [scene composition and framing], [characters present: positions, actions, expressions], [environment and setting details], [time of day, weather, atmosphere], [lighting: direction, quality, color temperature], [mood and emotional tone], [style: cinematic, film-quality, dramatic], [quality: sharp focus, detailed, 8k, depth of field]
 
@@ -21,7 +21,7 @@ RULES:
 
 export async function POST(req: NextRequest) {
   try {
-    const { title, narrative, emotion, characterNames, hasReferences, settingDescription } =
+    const { title, narration, characterNames, hasReferences } =
       await req.json();
 
     if (!title) {
@@ -39,17 +39,11 @@ export async function POST(req: NextRequest) {
     }
 
     let userMessage = `Scene title: ${title}`;
-    if (narrative) {
-      userMessage += `\nNarrative: ${narrative}`;
-    }
-    if (emotion) {
-      userMessage += `\nEmotional tone: ${emotion}`;
+    if (narration) {
+      userMessage += `\nNarration: ${narration}`;
     }
     if (characterNames?.length) {
       userMessage += `\nCharacters in scene: ${characterNames.join(", ")}`;
-    }
-    if (settingDescription) {
-      userMessage += `\nSetting: ${settingDescription}`;
     }
     if (hasReferences) {
       userMessage += `\n\nReference images are being provided (character portraits and/or other scene images). Write the prompt to guide an image-to-image model to compose these references into the described scene. Use phrasing that directs the model to place and position the referenced characters within the scene.`;

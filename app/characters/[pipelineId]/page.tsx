@@ -554,17 +554,8 @@ export default function CharactersPage() {
                       <h3 className="font-display text-xl font-semibold text-parchment">
                         {char.name}
                       </h3>
-                      <p className="text-xs text-parchment/50 mt-0.5">
-                        {char.emotional_role}
-                      </p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <div className="text-right text-xs text-parchment/30 shrink-0">
-                        <p>{char.age_current}</p>
-                        {char.age_alternate && (
-                          <p className="text-parchment/20">({char.age_alternate})</p>
-                        )}
-                      </div>
                       <button
                         onClick={() => generateImage(char)}
                         disabled={isGen}
@@ -591,13 +582,6 @@ export default function CharactersPage() {
                       </button>
                     </div>
                   </div>
-
-                  <p className="text-sm text-parchment/60 mt-3 leading-relaxed line-clamp-2">
-                    {typeof char.physical_description === "string"
-                      ? char.physical_description
-                      : char.physical_description.overall_look ||
-                        `${char.physical_description.hair}, ${char.physical_description.build}, ${char.physical_description.style}`}
-                  </p>
                 </div>
 
                 <div className="p-6 space-y-5">

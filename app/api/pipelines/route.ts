@@ -52,7 +52,7 @@ export async function GET(req: NextRequest) {
     const supabase = getSupabase();
     const { data, error, count } = await supabase
       .from("pipelines")
-      .select("id, title, author, genre, source_type, model_used, story_char_count, created_at, pipeline_data->production_notes->total_scenes", { count: "exact" })
+      .select("id, title, author, genre, source_type, model_used, story_char_count, created_at", { count: "exact" })
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
 
