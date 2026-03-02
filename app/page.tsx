@@ -1,13 +1,119 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { Download, RefreshCw, ChevronRight, Clock, Users, Film } from "lucide-react";
+import { Download, RefreshCw, ChevronRight, Clock, Users, Film, AlertTriangle, CheckCircle, XCircle, ChevronDown, ChevronUp } from "lucide-react";
 import Link from "next/link";
 import StoryUploader from "@/components/StoryUploader";
 import StreamingOutput from "@/components/StreamingOutput";
 import ResultsViewer from "@/components/ResultsViewer";
 import { PipelineJSON, ProcessingStatus } from "@/types/pipeline";
 import { useLanguage } from "@/lib/language-context";
+import { validatePipeline, ValidationResult, Violation } from "@/lib/pipeline-validator";
+
+function ValidationReport({ result }: { result: ValidationResult }) {
+  const [expanded, setExpanded] = useState(false);
+  const { summary, violations } = result;
+
+  const hasErrors = summary.errors > 0;
+  const unfixed = violations.filter((v) => !v.autoFixed);
+  const fixed = violations.filter((v) => v.autoFixed);
+
+  if (summary.total === 0) return null;
+
+  const allAutoFixed = unfixed.length === 0;
+
+  return (
+    <div className={`mb-6 rounded-xl border overflow-hidden ${
+      hasErrors
+        ? "bg-red-950/20 border-red-900/40"
+        : allAutoFixed
+          ? "bg-green-950/20 border-green-900/40"
+          : "bg-amber-950/20 border-amber-900/40"
+    }`}>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-white/[0.02] transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          {hasErrors ? (
+            <XCircle size={16} className="text-red-400" />
+          ) : allAutoFixed ? (
+            <CheckCircle size={16} className="text-green-400" />
+          ) : (
+            <AlertTriangle size={16} className="text-amber-400" />
+          )}
+          <span className="text-sm font-medium text-parchment/80">
+            Pipeline Validation
+          </span>
+          <div className="flex items-center gap-2 text-xs">
+            {summary.autoFixed > 0 && (
+              <span className="bg-green-900/40 text-green-400 px-2 py-0.5 rounded-full">
+                {summary.autoFixed} auto-fixed
+              </span>
+            )}
+            {summary.errors > 0 && (
+              <span className="bg-red-900/40 text-red-400 px-2 py-0.5 rounded-full">
+                {summary.errors} error{summary.errors !== 1 ? "s" : ""}
+              </span>
+            )}
+            {summary.warnings - summary.autoFixed > 0 && (
+              <span className="bg-amber-900/40 text-amber-400 px-2 py-0.5 rounded-full">
+                {summary.warnings - summary.autoFixed} warning{summary.warnings - summary.autoFixed !== 1 ? "s" : ""}
+              </span>
+            )}
+          </div>
+        </div>
+        {expanded ? <ChevronUp size={14} className="text-parchment/40" /> : <ChevronDown size={14} className="text-parchment/40" />}
+      </button>
+
+      {expanded && (
+        <div className="px-4 pb-4 border-t border-white/5">
+          {fixed.length > 0 && (
+            <div className="mt-3">
+              <p className="text-xs text-green-400/70 font-medium mb-2 uppercase tracking-wider">Auto-fixed</p>
+              <div className="space-y-1">
+                {fixed.map((v, i) => (
+                  <ViolationRow key={`fixed-${i}`} violation={v} />
+                ))}
+              </div>
+            </div>
+          )}
+          {unfixed.length > 0 && (
+            <div className="mt-3">
+              <p className="text-xs text-amber-400/70 font-medium mb-2 uppercase tracking-wider">Needs attention</p>
+              <div className="space-y-1">
+                {unfixed.map((v, i) => (
+                  <ViolationRow key={`unfixed-${i}`} violation={v} />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ViolationRow({ violation }: { violation: Violation }) {
+  const v = violation;
+  return (
+    <div className={`flex items-start gap-2 text-xs px-3 py-2 rounded-lg ${
+      v.autoFixed
+        ? "bg-green-900/10 text-green-300/70"
+        : v.severity === "error"
+          ? "bg-red-900/10 text-red-300/70"
+          : "bg-amber-900/10 text-amber-300/70"
+    }`}>
+      <span className="font-mono text-parchment/40 shrink-0 mt-0.5 min-w-[65px]">
+        {v.sceneId || v.characterId || "global"}
+      </span>
+      <span className="font-mono text-parchment/30 shrink-0 mt-0.5 min-w-[130px]">
+        {v.field}
+      </span>
+      <span className="leading-relaxed">{v.message}</span>
+    </div>
+  );
+}
 
 export default function Home() {
   const { lang, setLang, t } = useLanguage();
@@ -20,6 +126,7 @@ export default function Home() {
   const [modelInfo, setModelInfo] = useState<string | null>(null);
   const [savedId, setSavedId] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
 
   const sourceTypeRef = useRef<"text" | "images">("text");
   const modelUsedRef = useRef<string>("claude");
@@ -67,6 +174,7 @@ export default function Home() {
     setModelInfo(null);
     setSavedId(null);
     setSaveError(null);
+    setValidationResult(null);
     storyCharCountRef.current = storyText.length;
     modelUsedRef.current = "claude";
     sourceTypeRef.current = "text";
@@ -119,11 +227,20 @@ export default function Home() {
               if (data.done) {
                 try {
                   let jsonStr = accumulated.trim();
-                  // Strip markdown code fences if the model wrapped the output
                   jsonStr = jsonStr.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/, "");
-                  const parsed = JSON.parse(jsonStr);
-                  setParsedData(parsed);
+                  const parsed = JSON.parse(jsonStr) as PipelineJSON;
+
+                  const result = validatePipeline(parsed);
+                  setValidationResult(result);
+                  setParsedData(result.pipeline);
+                  setRawText(JSON.stringify(result.pipeline, null, 2));
                   setStatus("done");
+
+                  if (result.summary.autoFixed > 0) {
+                    console.log(
+                      `[validator] Auto-fixed ${result.summary.autoFixed} issue(s). ${result.summary.errors} error(s), ${result.summary.warnings} warning(s) remaining.`
+                    );
+                  }
                 } catch {
                   setError(t("failed_parse_json"));
                   setStatus("error");
@@ -218,6 +335,7 @@ export default function Home() {
     setModelInfo(null);
     setSavedId(null);
     setSaveError(null);
+    setValidationResult(null);
   };
 
   const isProcessing = status === "processing" || status === "streaming";
@@ -444,6 +562,11 @@ export default function Home() {
                 </button>
               </div>
             </div>
+
+            {/* Validation report */}
+            {validationResult && validationResult.summary.total > 0 && (
+              <ValidationReport result={validationResult} />
+            )}
 
             {view === "visual" ? (
               <ResultsViewer data={parsedData} />

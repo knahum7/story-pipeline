@@ -3,6 +3,24 @@ import { fal } from "@fal-ai/client";
 import { getSupabase } from "@/lib/supabase";
 import { VIDEO_AUDIO_MODEL, VIDEO_IMAGE_MODEL } from "@/lib/fal-models";
 
+const VIDEO_NEGATIVE_PROMPT = [
+  "subtitles, captions, text overlay, watermark, title cards, burned-in text, on-screen text, credits",
+  "blurry, out of focus, overexposed, underexposed, low contrast, washed out colors",
+  "excessive noise, grainy texture, poor lighting, flickering, motion blur",
+  "distorted proportions, unnatural skin tones, deformed facial features, asymmetrical face",
+  "missing facial features, extra limbs, disfigured hands, wrong hand count",
+  "artifacts around text, inconsistent perspective, camera shake, incorrect depth of field",
+  "background too sharp, background clutter, distracting reflections, harsh shadows",
+  "inconsistent lighting direction, color banding, cartoonish rendering, 3D CGI look",
+  "unrealistic materials, uncanny valley effect, incorrect ethnicity, wrong gender",
+  "exaggerated expressions, wrong gaze direction, mismatched lip sync",
+  "silent or muted audio, distorted voice, robotic voice, echo, background noise",
+  "off-sync audio, incorrect dialogue, added dialogue, repetitive speech",
+  "jittery movement, awkward pauses, incorrect timing, unnatural transitions",
+  "inconsistent framing, tilted camera, flat lighting, inconsistent tone",
+  "cinematic oversaturation, stylized filters, AI artifacts",
+].join(", ");
+
 fal.config({ credentials: () => process.env.FAL_KEY || "" });
 
 interface FalVideoResult {
@@ -52,6 +70,7 @@ export async function POST(req: NextRequest) {
 
     const input: Record<string, unknown> = {
       prompt: animationPrompt,
+      negative_prompt: VIDEO_NEGATIVE_PROMPT,
       image_url: compositeImageUrl,
       video_size: { width: 720, height: 1280 },
       use_multiscale: true,
@@ -60,7 +79,7 @@ export async function POST(req: NextRequest) {
       num_inference_steps: 40,
       video_quality: "high",
       video_output_type: "X264 (.mp4)",
-      enable_prompt_expansion: true,
+      enable_prompt_expansion: false,
     };
 
     if (hasAudio) {

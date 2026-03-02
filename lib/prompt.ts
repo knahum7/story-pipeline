@@ -4,9 +4,9 @@ PIPELINE OVERVIEW — understand what happens to each field you produce:
 1. style_prompt → generates a STYLE REFERENCE IMAGE via text-to-image (Nano Banana 2). This image is included as a visual reference in ALL subsequent image generation calls.
 2. image_generation_prompt → generates a CHARACTER PORTRAIT via image-to-image (Nano Banana 2 Edit) using the style image as reference. The portrait is ALSO used as a reference image when compositing characters into scene backgrounds.
 3. scene_image_prompt → generates a BACKGROUND-ONLY IMAGE via image-to-image (Nano Banana 2 Edit) using the style image as reference. This is a "set photo" with NO people in it.
-4. The background image + character portraits are COMPOSITED together into a single frame via image-to-image (Nano Banana 2 Edit). The animation_prompt is used to guide character placement.
-5. dialogue lines or narration text → converted to AUDIO via text-to-speech (MiniMax TTS). This determines the video duration.
-6. animation_prompt → drives VIDEO GENERATION from the composited frame via LTX-2 Audio-to-Video. The audio (dialogue or narration) is baked into the video. For dialogue scenes, the model syncs lip movement to speech. For narration scenes, the audio drives ambient motion pacing — NO lip sync occurs because the prompt specifies no one is speaking.
+4. The background image + character portraits are COMPOSITED together into a single frame via image-to-image (Nano Banana 2 Edit). The STARTING POSITIONS section of animation_prompt tells the compositor where to place each character.
+5. dialogue lines or narration text → converted to AUDIO via text-to-speech (MiniMax TTS). Each character gets a distinct voice. Narration uses a separate narrator voice. This audio determines the video duration.
+6. animation_prompt → drives VIDEO GENERATION from the composited frame via LTX-2 Audio-to-Video. The audio (dialogue or narration) is baked into the video. For dialogue scenes, the model syncs lip movement to speech. For narration scenes, the model produces ambient motion ONLY — the prompt MUST say "No characters are speaking." or the model will hallucinate lip movements.
 
 GLOBAL RULES:
 1. NEVER summarize vaguely. Always extract specific visual details from the text.
@@ -14,6 +14,7 @@ GLOBAL RULES:
 3. Preserve ALL dialogue exactly as written. Attribute every line to the correct character ID.
 4. Be consistent: if you name a character char_01, use char_01 everywhere they appear.
 5. Output ONLY valid JSON. No explanations before or after. No markdown code fences. No trailing commas.
+6. ONLY describe what can be SEEN. Never include sounds, smells, tastes, textures-by-touch, or internal thoughts in image_generation_prompt or scene_image_prompt. These fields drive image generation models that can only render visual information.
 
 Produce a JSON object with exactly these top-level keys: story, style_prompt, style_image_url, characters, scenes.
 
@@ -66,8 +67,11 @@ FORMAT: "[Full name], [age/build], [hair: color, length, style], [face: complexi
 RULES:
 - ALWAYS specify "neutral blurred background" or "simple gradient background" — a busy background will bleed into composites and ruin scene images.
 - Upper body or three-quarter view, facing forward or slightly angled — the character must be clearly identifiable and compositable.
+- ONLY VISUAL details. No smells, sounds, textures-by-touch, or backstory. The image model renders pixels, nothing else.
 - Focus ONLY on subject-specific details. DO NOT include style or quality descriptors — those come from the style reference image.
 - Be specific about clothing, hair, and distinguishing features — these must be consistent every time the character appears.
+
+WHO TO INCLUDE: Create character entries ONLY for characters who have dialogue lines OR who physically appear in scenes. Minor characters who are only mentioned in passing (e.g. a boss described in narration but never seen/speaking) should NOT get a character entry — describe them directly in the animation_prompt when they appear. If a minor character has even ONE dialogue line, they MUST have a character entry so the line can be attributed.
 
 EXAMPLE: "Christine Mooney, mid-30s slender build, blonde shoulder-length hair with soft waves, fair complexion with refined features, elegant black cocktail dress with thin straps, four-inch pencil-thin high heels, contemplative expression with underlying vulnerability, three-quarter view standing pose, neutral blurred background, soft warm studio lighting"
 
@@ -86,35 +90,58 @@ Each scene object:
 ── scene_image_prompt ──
 Generates the BACKGROUND AND ENVIRONMENT ONLY via image-to-image. Characters will be composited in separately — DO NOT include any characters, people, figures, or silhouettes.
 
-FORMAT: "[setting/location], [key objects: furniture, props, architecture], [spatial composition: foreground/midground/background elements], [time of day], [weather/atmosphere], [lighting: direction, quality, color temperature], [mood]"
+FORMAT: "[setting/location], [key objects: furniture, props, architecture], [spatial composition: foreground/midground/background elements], [time of day], [weather/atmosphere], [lighting: direction, quality, color temperature], [mood], vertical 9:16 framing"
 
 RULES:
 - Think of this as a "set photo" before actors walk on.
-- Frame for VERTICAL 9:16 aspect ratio — favor tall compositions (doorways, corridors, tall windows, vertical architecture). Avoid ultra-wide panoramic descriptions.
+- Frame for VERTICAL 9:16 aspect ratio — ALWAYS end the prompt with "vertical 9:16 framing". Favor tall compositions (doorways, corridors, tall windows, vertical architecture). Avoid ultra-wide panoramic descriptions.
 - Leave visual space in the mid-ground where characters will be placed — don't fill the entire frame with objects or tight close-ups of surfaces.
 - Match the lighting to what the animation_prompt describes (if characters are near a window, light the scene from that direction).
 - DO NOT include style or quality descriptors — those come from the style reference image.
-- NEVER write "Same..." or refer to a previous scene's background. Each scene_image_prompt is sent to a SEPARATE API call with NO memory of previous scenes. ALWAYS write the FULL, self-contained environment description even if the location hasn't changed. Copy the description verbatim if needed.
+- !! BANNED WORDS: "Same", "same as", "similar to", "previous", "as before", "again", "see scene_XX". Each scene_image_prompt is sent to a COMPLETELY SEPARATE API call with ZERO memory of any other scene. The model has never seen any other prompt. If you write "Same kitchen..." the model will generate a random kitchen because "Same" means nothing to it. ALWAYS write the FULL, self-contained environment description even if the location hasn't changed. COPY-PASTE the description verbatim from the earlier scene if needed — that is the correct approach.
 
-EXAMPLE: "Cramped kitchen interior, vodka bottles on worn formica counter, swayback wooden ladder propped against cabinets, small window with yellowed curtains at upper right, scuffed linoleum floor with clear space in center, harsh fluorescent overhead light casting sharp shadows, working-class apartment, evening"
+EXAMPLE: "Cramped kitchen interior, vodka bottles on worn formica counter, swayback wooden ladder propped against cabinets, small window with yellowed curtains at upper right, scuffed linoleum floor with clear space in center, harsh fluorescent overhead light casting sharp shadows, working-class apartment, evening, vertical 9:16 framing"
 
 ── animation_prompt ──
-Drives TWO steps: (1) character placement during compositing, and (2) video motion generation via LTX-2.
+Drives TWO pipeline steps: (1) character placement during compositing, and (2) video motion generation via LTX-2.
 
-FORMAT — structure it in this exact order:
-1. STARTING POSITIONS — where each character is and what they're doing at the START of the scene. This guides compositing. Be specific about spatial placement (left, right, center, foreground, background).
-2. MOTION — what happens during the clip. Only ONE character should be the primary mover.
-3. CAMERA — camera motion if any (slow pan, dolly in, static, handheld drift).
+MANDATORY FORMAT — use these EXACT labeled sections in this order:
 
-FOR DIALOGUE SCENES: The speaking character is animated with lip sync. Describe their speaking gestures, facial expressions, and body language. Other characters remain mostly still or react subtly.
+POSITIONS: [Where each character stands at frame 0. Use spatial terms: left-third, center, right-third, foreground, mid-ground, background. One sentence per character. This section is read by the compositing model to place character portraits onto the background image.]
+MOTION: [What happens during the clip. Describe actions, gestures, expressions. Only ONE character is the primary mover. 2-3 sentences max.]
+CAMERA: [Camera behavior. One sentence: static, slow pan left/right, dolly in/out, handheld drift, etc.]
 
-FOR NARRATION SCENES: No character is speaking — the narration audio plays as voiceover while the video shows ambient motion. ALWAYS start with "No characters are speaking." then describe subtle body language, environmental changes (wind, light shifts), and camera movement. This instruction prevents the video model from generating unwanted lip-sync movements.
+CRITICAL RULES FOR ANIMATION PROMPTS:
 
-ALWAYS reference characters by their FULL NAME (not char_01).
+FOR DIALOGUE SCENES (dialogue array is non-empty):
+- In MOTION, describe the speaking character's gestures, facial expressions, and body language while talking. Include "lips moving" or "speaking" for the character who has dialogue. Other characters remain mostly still or react subtly.
+- ALWAYS reference characters by their FULL NAME (never char_01).
 
-EXAMPLE (dialogue): "Christine stands center-frame at the kitchen counter, looking down at an empty glass. Alexi leans against the doorframe in the background, arms crossed. Christine raises her gaze slowly, expression shifting from sadness to quiet resolve, lips moving as she speaks. Alexi remains still, watching. Camera holds steady with a subtle drift."
+FOR NARRATION SCENES (narration is non-empty, dialogue is empty):
+- The narration audio plays as voiceover. The video model WILL attempt lip-sync on any character it thinks is speaking. To prevent this:
+- MOTION section MUST begin with the exact sentence: "No characters are speaking."
+- After that sentence, describe ONLY: subtle body language (breathing, shifting weight, looking around), environmental motion (wind, light changes, floating dust), and object interactions (turning pages, holding items). NEVER use words like "speaks", "says", "talks", "discusses", "explains", "tells", "addresses", "describes", "announces", "asks", "replies", "responds", "comments", "mentions", "remarks", "whispers", "murmurs", "calls out" — these ALL trigger lip-sync.
+- ALWAYS reference characters by their FULL NAME (never char_01).
 
-EXAMPLE (narration): "The empty pier stretches toward the horizon, waves lapping at weathered pilings. A lone figure — Marina — sits at the far end, silhouetted against the setting sun, her hair swaying gently in the ocean breeze. Camera slowly dollies forward along the pier."
+FOR EMPTY SCENES (no characters, narration only):
+- POSITIONS: "No characters in frame."
+- MOTION: "No characters are speaking. [describe environmental motion only]"
+- CAMERA: as usual.
+
+EXAMPLE (dialogue):
+"POSITIONS: Christine stands center-frame at the kitchen counter, looking down at an empty glass. Alexi leans against the doorframe in the background, arms crossed.
+MOTION: Christine raises her gaze slowly, expression shifting from sadness to quiet resolve, lips moving as she speaks. Alexi remains still, watching.
+CAMERA: Static with subtle handheld drift."
+
+EXAMPLE (narration with characters):
+"POSITIONS: Darlyn stands on the wooden ladder in center-frame, arms reaching above the kitchen cabinets. 
+MOTION: No characters are spending. Darlyn's hands sweep slowly across the top of the cabinet, pulling down small flat bottles and placing them into a grocery bag. Her body sways slightly on the ladder.
+CAMERA: Static, slight handheld drift."
+
+EXAMPLE (narration, no characters):
+"POSITIONS: No characters in frame.
+MOTION: No characters are speaking. Morning light shifts across the empty pier as waves lap against weathered pilings. A fishing net sways gently in the breeze.
+CAMERA: Slow dolly forward along the pier."
 
 ── dialogue ──
 Array of { character: "char_XX", line: "exact quote" }. MUST be empty array [] if narration is used.
@@ -123,20 +150,21 @@ CRITICAL RULES:
 - Each scene may have AT MOST ONE speaking character. ALL dialogue lines in a scene must belong to the SAME character ID.
 - When a different character speaks, you MUST create a new scene.
 - A back-and-forth conversation: split into alternating scenes, one per speaker turn.
-- KEEP EACH DIALOGUE TURN UNDER 40 WORDS. The text is converted to speech audio, and the video duration matches the audio length. Long monologues (40+ words) produce very long videos that degrade in quality. Split long speeches across multiple scenes with the same speaker.
+- KEEP EACH DIALOGUE TURN UNDER 35 WORDS. The text is converted to speech audio, and the video duration matches the audio length. Long monologues (35+ words) produce very long videos that degrade in quality. Split long speeches across multiple scenes with the same speaker.
 - Preserve the exact wording from the source text.
 - Multiple lines from the SAME character in one scene are allowed (they're concatenated for TTS).
+- EVERY dialogue line MUST be attributed to a character ID that exists in the characters array. If a line belongs to a minor character who doesn't have an entry, you MUST create a character entry for them first. NEVER attribute a line to the wrong character — if Character A says something to Character B, the line belongs to Character A's ID, not Character B's.
 
 ── narration ──
 Voiceover/narrator text. MUST be "" if dialogue is used.
 
 RULES:
 - Dialogue and narration are MUTUALLY EXCLUSIVE per scene.
-- KEEP NARRATION UNDER 50 WORDS PER SCENE. The narration is converted to speech audio, and the video duration matches. Long narration produces long videos that lose visual coherence. Split lengthy narration across multiple scenes.
+- KEEP NARRATION UNDER 40 WORDS PER SCENE. The narration is converted to speech audio, and the video duration matches. Long narration produces long videos that lose visual coherence. Split lengthy narration across multiple scenes.
 - Write in a natural, spoken cadence — this text will be read aloud by TTS. Avoid complex punctuation, parentheticals, or overly literary constructions that sound awkward when spoken.
 
 ─────────────────────────────────────────────
-CRITICAL SCENE RULES
+CRITICAL SCENE RULES (ZERO TOLERANCE)
 ─────────────────────────────────────────────
 1. ONE SPEAKER PER SCENE — if a scene has dialogue, ALL lines belong to the SAME character. When the speaker changes, create a new scene. A conversation between two characters = alternating scenes.
 
@@ -146,15 +174,21 @@ CRITICAL SCENE RULES
 
 4. scene_image_prompt = BACKGROUND ONLY. Never include characters, people, figures, or silhouettes. Characters are composited separately.
 
-5. animation_prompt STARTS with character positions (for compositing) THEN describes motion (for video). Only ONE character is the primary mover per scene.
+5. animation_prompt MUST use the labeled POSITIONS/MOTION/CAMERA format. No exceptions. Flowing prose without these labels will break the compositing pipeline.
 
-6. KEEP TEXT SHORT for TTS — dialogue turns under 40 words, narration under 50 words per scene. If longer, split into multiple scenes. Video quality degrades with duration.
+6. NARRATION SCENES: The MOTION section MUST begin with "No characters are speaking." — this is a technical instruction to the video model, not a creative choice. Without it, the model generates random lip movements on character faces. EVERY narration scene needs this, even when characters are visible in the frame.
 
-7. SCENE COUNT — produce enough scenes to faithfully cover the ENTIRE story. Guideline: approximately 4-6 scenes per page of source material. A 15-page story should yield roughly 60-90 scenes. Do NOT summarize or skip sections. Every significant beat, dialogue exchange, transition, and moment must have its own scene. If in doubt, create MORE scenes rather than fewer.
+7. KEEP TEXT SHORT for TTS — dialogue under 35 words, narration under 40 words per scene. If longer, split into multiple scenes. Video quality degrades with duration.
 
-8. SCENE CONTINUITY — when splitting a conversation or long passage into multiple scenes at the same location, COPY the full scene_image_prompt verbatim (do NOT write "Same..." — each prompt is processed independently with no memory). Only change the background description when the story's location actually changes. Adjust the animation_prompt to show progression.
+8. SCENE COUNT — produce enough scenes to faithfully cover the ENTIRE story. Guideline: approximately 4-6 scenes per page of source material. A 15-page story should yield roughly 60-90 scenes. Do NOT summarize or skip sections. Every significant beat, dialogue exchange, transition, and moment must have its own scene. If in doubt, create MORE scenes rather than fewer.
 
-9. NO DURATION FIELD — scenes do not have a fixed duration. Video length is determined automatically: dialogue and narration scenes match their TTS audio length, silent scenes default to ~5 seconds.`;
+9. SCENE CONTINUITY — when splitting a conversation or long passage into multiple scenes at the same location, COPY the full scene_image_prompt TEXT VERBATIM (do NOT write "Same...", "Similar...", "As before..." — each prompt is processed independently with zero memory). Only change the background description when the story's location actually changes.
+
+10. NO DURATION FIELD — scenes do not have a fixed duration. Video length is determined automatically: dialogue and narration scenes match their TTS audio length, silent scenes default to ~5 seconds.
+
+11. CORRECT DIALOGUE ATTRIBUTION — if a line is spoken by Norm, it belongs to Norm's character ID, not the character Norm is speaking TO. If a line is spoken by a character not in the characters array, ADD them to the characters array first. NEVER mis-attribute dialogue to make it fit.
+
+12. VISUAL-ONLY PROMPTS — image_generation_prompt and scene_image_prompt must describe ONLY what a camera can capture. No smells ("chlorine scent"), sounds ("birds chirping"), internal thoughts ("feeling anxious"), or non-visual sensory details. The image model has no way to render these and they waste prompt space.`;
 
 export const buildUserPrompt = (storyText: string): string => {
   return `Parse the following story into the animation pipeline JSON format as instructed:\n\n${storyText}`;
