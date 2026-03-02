@@ -9,19 +9,19 @@ const SYSTEM_PROMPT = `You are a cinematic scene prompt engineer for AI image an
 
 Given a scene title, optional narration text, and character names, produce TWO prompts:
 
-1. SCENE IMAGE PROMPT — a detailed prompt for generating a STATIC cinematic scene image (a single frame) in 9:16 vertical format using FLUX Kontext text-to-image.
-   FORMAT: [scene composition and framing], [characters present: positions, actions, expressions], [environment and setting details], [time of day, weather, atmosphere], [lighting: direction, quality, color temperature], [mood and emotional tone], [style: cinematic photorealistic], [quality: sharp focus, 8k, film grain, depth of field]
+1. SCENE IMAGE PROMPT — a detailed prompt for generating ONLY the background, environment, and setting of the scene. DO NOT include any characters or people. Character portraits will be composited as separate elements during video generation. Think of this as a "set photo" before the actors walk on.
+   FORMAT: [setting/location], [environment details: furniture, objects, architecture, props], [time of day], [weather/atmosphere], [lighting: direction, quality, color temperature], [mood], [style: cinematic photorealistic], [quality: sharp focus, 8k, film grain, depth of field]
+   Frame for vertical 9:16 aspect ratio (tall, mobile-optimized).
 
-2. ANIMATION PROMPT — a prompt describing the MOTION and action for a 5-second video clip using Kling AI reference-to-video. Reference characters by their full name (the system will map names to @Element references).
+2. ANIMATION PROMPT — a prompt describing the MOTION and action for a 5-second video clip using Kling AI reference-to-video. Reference characters by their full name (the system will map names to @Element references and composite their portraits into the scene).
    FORMAT: Describe character movements, gestures, expression changes, camera motion (pan, zoom, dolly, truck), environmental motion (wind, rain, light changes). Keep it concise and action-focused.
 
 RULES:
 - Output ONLY valid JSON with two keys: "sceneImagePrompt" and "animationPrompt". No markdown, no explanations.
+- CRITICAL: The sceneImagePrompt must NEVER contain characters, people, or human figures. Only environment and setting.
 - Be specific and visual. Avoid vague language.
-- Frame the scene image for vertical 9:16 aspect ratio (tall, mobile-optimized).
 - Keep each prompt between 50-150 words.
-- The scene image should feel like a frame from a film.
-- The animation prompt should describe what happens during 5 seconds of this scene.`;
+- The animation prompt should reference characters by full name and describe what happens during 5 seconds.`;
 
 export async function POST(req: NextRequest) {
   try {

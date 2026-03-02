@@ -131,9 +131,6 @@ function SceneCard({ scene, characters }: { scene: Scene; characters: Character[
                   </span>
                   <div>
                     <p className="text-xs text-parchment/80">"{line.line}"</p>
-                    {line.delivery_note && (
-                      <p className="text-xs text-parchment/30 italic mt-0.5">{line.delivery_note}</p>
-                    )}
                   </div>
                 </div>
               );

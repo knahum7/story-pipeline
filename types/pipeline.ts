@@ -10,7 +10,6 @@ export interface Character {
 export interface DialogueLine {
   character: string;
   line: string;
-  delivery_note: string;
 }
 
 export interface Scene {
