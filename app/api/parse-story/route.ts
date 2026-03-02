@@ -3,6 +3,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import { PIPELINE_SYSTEM_PROMPT, buildUserPrompt } from "@/lib/prompt";
 
+export const runtime = "edge";
+
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
