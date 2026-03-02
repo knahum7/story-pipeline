@@ -36,14 +36,23 @@ export async function POST(req: NextRequest) {
     }
 
     const supabase = getSupabase();
+
+    const { data: pipelineRow } = await supabase
+      .from("pipelines")
+      .select("pipeline_data")
+      .eq("id", pipelineId)
+      .single();
+    const stylePrompt = (pipelineRow?.pipeline_data as Record<string, unknown>)?.style_prompt as string || "";
+    const fullPrompt = stylePrompt ? `${stylePrompt}. ${prompt}` : prompt;
+
     const startTime = Date.now();
 
     console.log(
-      `[scenes] Generating ${sceneId} with ${SCENE_IMAGE_MODEL}, prompt: ${prompt.slice(0, 150)}...`
+      `[scenes] Generating ${sceneId} with ${SCENE_IMAGE_MODEL}${stylePrompt ? " + style_prompt" : ""}, prompt: ${fullPrompt.slice(0, 150)}...`
     );
 
     const input: Record<string, unknown> = {
-      prompt,
+      prompt: fullPrompt,
       aspect_ratio: "9:16",
       num_images: 1,
       output_format: "png",
@@ -112,7 +121,7 @@ export async function POST(req: NextRequest) {
       .insert({
         pipeline_id: pipelineId,
         scene_id: sceneId,
-        prompt,
+        prompt: fullPrompt,
         model_used: SCENE_IMAGE_MODEL,
         image_url: publicUrlData.publicUrl,
         width: imageWidth,

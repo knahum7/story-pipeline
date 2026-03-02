@@ -45,9 +45,18 @@ export async function POST(req: NextRequest) {
     const model = getCharModel(hasReference);
 
     const supabase = getSupabase();
+
+    const { data: pipelineRow } = await supabase
+      .from("pipelines")
+      .select("pipeline_data")
+      .eq("id", pipelineId)
+      .single();
+    const stylePrompt = (pipelineRow?.pipeline_data as Record<string, unknown>)?.style_prompt as string || "";
+    const fullPrompt = stylePrompt ? `${stylePrompt}. ${prompt}` : prompt;
+
     const startTime = Date.now();
     console.log(
-      `[characters] Generating portrait for "${name}" (${characterId}) with ${model}${hasReference ? " + reference" : ""}`
+      `[characters] Generating portrait for "${name}" (${characterId}) with ${model}${hasReference ? " + reference" : ""}${stylePrompt ? " + style_prompt" : ""}`
     );
 
     let referenceUrl: string | null = null;
@@ -79,7 +88,7 @@ export async function POST(req: NextRequest) {
     }
 
     const input: Record<string, unknown> = {
-      prompt,
+      prompt: fullPrompt,
       aspect_ratio: "3:4",
       num_images: 1,
       output_format: "png",
@@ -151,7 +160,7 @@ export async function POST(req: NextRequest) {
         pipeline_id: pipelineId,
         character_id: characterId,
         name,
-        prompt,
+        prompt: fullPrompt,
         model_used: model,
         image_url: imageUrl,
         fal_request_id: result.requestId ?? null,

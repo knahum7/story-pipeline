@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Clock,
   Loader2,
   Sparkles,
@@ -20,6 +21,8 @@ import {
   ImageIcon,
   Wand2,
   Upload,
+  Palette,
+  Save,
 } from "lucide-react";
 import { useLanguage } from "@/lib/language-context";
 import { PipelineJSON, Character } from "@/types/pipeline";
@@ -57,6 +60,11 @@ export default function CharactersPage() {
   const charRefInputRef = useRef<HTMLInputElement>(null);
   const charRefTargetRef = useRef<string | null>(null);
 
+  const [stylePrompt, setStylePrompt] = useState("");
+  const [stylePromptSaved, setStylePromptSaved] = useState("");
+  const [styleExpanded, setStyleExpanded] = useState(false);
+  const [styleSaving, setStyleSaving] = useState(false);
+
   const [showAddModal, setShowAddModal] = useState(false);
   const [newCharName, setNewCharName] = useState("");
   const [newCharDescription, setNewCharDescription] = useState("");
@@ -78,6 +86,8 @@ export default function CharactersPage() {
         if (!pipelineRes.ok) throw new Error("Failed to load pipeline");
         const pData = await pipelineRes.json();
         setPipeline(pData.pipeline_data);
+        setStylePrompt(pData.pipeline_data?.style_prompt || "");
+        setStylePromptSaved(pData.pipeline_data?.style_prompt || "");
 
         const prompts: Record<string, string> = {};
         for (const c of pData.pipeline_data?.characters || []) {
@@ -324,6 +334,23 @@ export default function CharactersPage() {
     }
   }, [newCharName, newCharPrompt, referenceFile, pipelineId, getNextCustomId, handleReferenceChange, t]);
 
+  const saveStylePrompt = useCallback(async () => {
+    setStyleSaving(true);
+    try {
+      const res = await fetch(`/api/pipelines/${pipelineId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ style_prompt: stylePrompt }),
+      });
+      if (!res.ok) throw new Error("Failed to save");
+      setStylePromptSaved(stylePrompt);
+    } catch {
+      alert("Failed to save style prompt");
+    } finally {
+      setStyleSaving(false);
+    }
+  }, [pipelineId, stylePrompt]);
+
   const customImages = images.filter((img) => {
     const pipelineCharIds = pipeline?.characters?.map((c) => c.id) || [];
     return !pipelineCharIds.includes(img.character_id);
@@ -487,6 +514,54 @@ export default function CharactersPage() {
               <span>{generatingAll ? t("generating_all") : t("generate_all")}</span>
             </button>
           </div>
+        </div>
+
+        {/* Style Prompt */}
+        <div className="mb-6 bg-ink-soft border border-ink-muted rounded-2xl overflow-hidden">
+          <button
+            onClick={() => setStyleExpanded(!styleExpanded)}
+            className="w-full flex items-center justify-between px-6 py-3 hover:bg-ink/30 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <Palette size={14} className="text-violet-400" />
+              <span className="text-sm font-semibold text-parchment/70">{t("style_prompt_label")}</span>
+              {stylePrompt && !styleExpanded && (
+                <span className="text-[10px] text-parchment/30 font-mono truncate max-w-[300px]">
+                  — {stylePrompt.slice(0, 60)}…
+                </span>
+              )}
+            </div>
+            <ChevronDown
+              size={14}
+              className={`text-parchment/30 transition-transform ${styleExpanded ? "rotate-180" : ""}`}
+            />
+          </button>
+          {styleExpanded && (
+            <div className="px-6 pb-4 space-y-3">
+              <p className="text-[10px] text-parchment/30">
+                {t("style_prompt_desc")}
+              </p>
+              <textarea
+                value={stylePrompt}
+                onChange={(e) => setStylePrompt(e.target.value)}
+                rows={3}
+                placeholder={t("style_prompt_placeholder")}
+                className="w-full bg-ink/60 border border-violet-800/30 rounded-lg p-3 text-[11px] text-parchment/70 font-mono leading-relaxed resize-y focus:outline-none focus:border-violet-600/50 transition-colors placeholder:text-parchment/15"
+              />
+              {stylePrompt !== stylePromptSaved && (
+                <div className="flex justify-end">
+                  <button
+                    onClick={saveStylePrompt}
+                    disabled={styleSaving}
+                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-violet-900/20 border border-violet-800/30 text-violet-400 hover:bg-violet-900/30 transition-colors disabled:opacity-50"
+                  >
+                    {styleSaving ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />}
+                    {styleSaving ? t("saving") : t("save")}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="space-y-6">

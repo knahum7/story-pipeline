@@ -36,6 +36,7 @@ export interface StoryInfo {
 
 export interface PipelineJSON {
   story: StoryInfo;
+  style_prompt: string;
   characters: Character[];
   scenes: Scene[];
 }

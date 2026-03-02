@@ -9,9 +9,11 @@ GLOBAL RULES:
 4. Be consistent: if you name a character char_01, use char_01 everywhere they appear.
 5. Output ONLY valid JSON. No explanations before or after. No markdown code fences. No trailing commas.
 
-Produce a JSON object with exactly these top-level keys: story, characters, scenes.
+Produce a JSON object with exactly these top-level keys: story, style_prompt, characters, scenes.
 
 STORY object fields: title, author, source, genre, tone, theme, era, art_style_direction.
+
+STYLE_PROMPT (string) — a reusable visual style directive that will be PREPENDED to every image generation prompt in this pipeline (both character portraits and scene backgrounds). Derive it from the story's genre, tone, era, and art_style_direction. Format: a concise paragraph (30-60 words) describing the visual medium, color palette, lighting style, texture, and mood. Examples: "Dark moody watercolor painting, muted earth tones with deep indigo shadows, soft diffused lighting, visible wet-on-wet brushstrokes, melancholic atmospheric haze, grain texture" or "Vibrant cel-shaded anime, bold saturated colors, clean sharp outlines, dramatic rim lighting, Studio Ghibli-inspired environmental detail". This style_prompt will be automatically prepended to all image prompts, so DO NOT repeat style or quality descriptors in individual image_generation_prompt or scene_image_prompt fields.
 
 CHARACTERS array — each character object:
 - id: unique identifier (char_01, char_02, etc.)
@@ -19,14 +21,14 @@ CHARACTERS array — each character object:
 - role: story role (e.g. "Protagonist", "Antagonist", "Supporting")
 - voice_url: always set to "" (empty string, to be filled later)
 - character_reference_url: always set to "" (empty string, to be filled later)
-- image_generation_prompt: detailed prompt for generating a portrait of this character. Format: [subject], [physical details], [clothing], [expression/emotion], [setting context if needed], [lighting], [style: cinematic photorealistic], [quality boosters: sharp focus, 8k, film grain]
+- image_generation_prompt: detailed prompt for generating a portrait of this character. Focus ONLY on subject-specific details: [subject], [physical details], [clothing], [expression/emotion], [setting context if needed], [lighting]. Do NOT include style or quality descriptors (e.g. "cinematic photorealistic", "sharp focus", "8k", "film grain") — those come from style_prompt.
 
 SCENES array — each scene object:
 - id: unique identifier (scene_01, scene_02, etc.)
 - title: descriptive scene title
 - characters: array of character IDs present in this scene. HARD LIMIT: maximum 3 characters per scene, minimum 0.
 - duration: ALWAYS set to 5. Every scene is exactly 5 seconds.
-- scene_image_prompt: detailed prompt for generating the BACKGROUND AND ENVIRONMENT ONLY — DO NOT include any characters or people in this prompt. This image will serve as the backdrop onto which character portraits are composited as separate elements during video generation. Format: [setting/location], [environment details: furniture, objects, architecture], [time of day], [weather/atmosphere], [lighting: direction, quality, color temperature], [mood], [style: cinematic photorealistic], [quality boosters: sharp focus, 8k, film grain]. Example: "Cluttered kitchen interior, vodka bottles on counter, swayback wooden ladder against cabinets, harsh fluorescent overhead lighting, cramped working-class apartment, evening, cinematic photorealistic, sharp focus, 8k, film grain"
+- scene_image_prompt: detailed prompt for generating the BACKGROUND AND ENVIRONMENT ONLY — DO NOT include any characters or people in this prompt. This image will serve as the backdrop onto which character portraits are composited as separate elements during video generation. Focus ONLY on scene-specific details: [setting/location], [environment details: furniture, objects, architecture], [time of day], [weather/atmosphere], [lighting: direction, quality, color temperature], [mood]. Do NOT include style or quality descriptors — those come from style_prompt. Example: "Cluttered kitchen interior, vodka bottles on counter, swayback wooden ladder against cabinets, harsh fluorescent overhead lighting, cramped working-class apartment, evening"
 - animation_prompt: describes the MOTION, action, and camera movement for a 5-second video clip of this scene. Reference characters by their full name — the system will composite their portrait images as elements and map names to @Element1, @Element2, etc. at generation time. Focus on: character movements, gestures, expressions changing, camera motion (pan, zoom, dolly), environmental motion (wind, rain, lights). Example: "Christine slowly turns toward the window, her expression shifting from contemplation to resolve. Camera dollies in gently. Curtains sway in the breeze."
 - dialogue: array of dialogue lines, each with { character (char ID), line (exact quote) }. MUST be empty array [] if narration is used for this scene.
 - narration: voiceover/narrator text for this scene. MUST be empty string "" if dialogue is used for this scene.

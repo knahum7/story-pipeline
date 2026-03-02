@@ -197,6 +197,19 @@ const translations: Record<string, TranslationEntry> = {
   scene_description_placeholder: { en: "e.g. Two characters face off in a dark alley under rain", tr: "ör. İki karakter yağmur altında karanlık bir sokakta karşı karşıya" },
   scene_prompt_placeholder: { en: "Describe the scene you want to generate...", tr: "Oluşturmak istediğiniz sahneyi açıklayın..." },
 
+  // Style prompt
+  style_prompt_label: { en: "Visual Style", tr: "Görsel Stil" },
+  style_prompt_desc: {
+    en: "This style directive is prepended to every image prompt for consistent visuals across all characters and scenes.",
+    tr: "Bu stil yönergesi, tüm karakter ve sahnelerde tutarlı görseller için her görsel komutunun başına eklenir.",
+  },
+  style_prompt_placeholder: {
+    en: "e.g. Dark moody watercolor painting, muted earth tones with deep indigo shadows, soft diffused lighting, visible brushstrokes, grain texture",
+    tr: "ör. Koyu, kasvetli suluboya tablo, derin indigo gölgeli soluk toprak tonları, yumuşak dağınık aydınlatma, görünür fırça darbeleri, tane dokusu",
+  },
+  saving: { en: "Saving...", tr: "Kaydediliyor..." },
+  save: { en: "Save", tr: "Kaydet" },
+
   // Dynamic (with interpolation)
   pages_selected: { en: "page(s) selected", tr: "sayfa seçildi" },
   extracting_pages: { en: "Extracting text from", tr: "Şuradan metin çıkarılıyor:" },

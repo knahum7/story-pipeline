@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { PipelineJSON, Character, Scene } from "@/types/pipeline";
-import { Copy, Check, ChevronDown, ChevronUp, Film, Users, Clapperboard } from "lucide-react";
+import { Copy, Check, ChevronDown, ChevronUp, Film, Users, Clapperboard, Palette } from "lucide-react";
 import { useLanguage } from "@/lib/language-context";
 
 interface ResultsViewerProps {
@@ -213,6 +213,15 @@ export default function ResultsViewer({ data }: ResultsViewerProps) {
         {/* OVERVIEW */}
         {activeTab === "overview" && (
           <div className="space-y-4 animate-fade-up">
+            {data.style_prompt && (
+              <div className="bg-violet-950/20 border border-violet-800/30 rounded-xl p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Palette size={14} className="text-violet-400" />
+                  <span className="text-xs font-semibold text-violet-400 uppercase tracking-wider">{t("style_prompt_label")}</span>
+                </div>
+                <p className="text-sm text-parchment/70 font-mono leading-relaxed">{data.style_prompt}</p>
+              </div>
+            )}
             {data.story?.art_style_direction && (
               <Accordion title={t("art_style_direction")} defaultOpen>
                 <p className="text-sm text-parchment/70 leading-relaxed pt-3">{data.story.art_style_direction}</p>
