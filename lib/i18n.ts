@@ -102,6 +102,7 @@ const translations: Record<string, TranslationEntry> = {
   portrait_prompt: { en: "Portrait Prompt", tr: "Portre Komutu" },
   dialogue: { en: "DIALOGUE", tr: "DİYALOG" },
   scene_image_prompt: { en: "Scene Image Prompt", tr: "Sahne Görsel Komutu" },
+  animation_prompt: { en: "Animation Prompt", tr: "Animasyon Komutu" },
   scenes_count: { en: "scenes", tr: "sahne" },
   art_style_direction: { en: "Art Style Direction", tr: "Sanat Stili Yönlendirmesi" },
 
@@ -129,7 +130,6 @@ const translations: Record<string, TranslationEntry> = {
   generating: { en: "Generating...", tr: "Oluşturuluyor..." },
   generate_all: { en: "Generate All Portraits", tr: "Tüm Portreleri Oluştur" },
   generating_all: { en: "Generating all...", tr: "Tümü oluşturuluyor..." },
-  select_model: { en: "Select Model", tr: "Model Seç" },
   no_images_yet: { en: "No images generated yet", tr: "Henüz görsel oluşturulmadı" },
   select_portrait_hint: { en: "Click a portrait to select it for training views. Double-click to expand.", tr: "Eğitim görüntüleri için bir portre seçmek üzere tıklayın. Büyütmek için çift tıklayın." },
   selected: { en: "Selected", tr: "Seçili" },
@@ -145,7 +145,6 @@ const translations: Record<string, TranslationEntry> = {
   char_age: { en: "Age", tr: "Yaş" },
   char_description: { en: "Description", tr: "Açıklama" },
   prompt_used: { en: "Prompt", tr: "Komut" },
-  model_label: { en: "Model", tr: "Model" },
   generated_images: { en: "Generated Images", tr: "Oluşturulan Görseller" },
   expand_image: { en: "Click to expand", tr: "Büyütmek için tıklayın" },
 
@@ -175,7 +174,7 @@ const translations: Record<string, TranslationEntry> = {
 
   // Scenes page
   scenes_title: { en: "Scene Generation", tr: "Sahne Oluşturma" },
-  scenes_desc: { en: "Generate scene images with character portraits", tr: "Karakter portreleri ile sahne görselleri oluşturun" },
+  scenes_desc: { en: "Generate scene images and videos", tr: "Sahne görselleri ve videoları oluşturun" },
   generate_scenes: { en: "Generate Scenes", tr: "Sahne Oluştur" },
   generate_scene: { en: "Generate Scene", tr: "Sahne Oluştur" },
   generating_scene: { en: "Generating scene...", tr: "Sahne oluşturuluyor..." },
@@ -185,11 +184,10 @@ const translations: Record<string, TranslationEntry> = {
   back_to_characters: { en: "Back to characters", tr: "Karakterlere dön" },
   add_character: { en: "Add character", tr: "Karakter ekle" },
   modified: { en: "modified", tr: "değiştirildi" },
-  scene_references: { en: "References", tr: "Referanslar" },
-  add_scene_ref: { en: "Add Scene", tr: "Sahne Ekle" },
-  generate_scene_i2i: { en: "I2I Generate", tr: "I2I Oluştur" },
-  no_characters_available: { en: "No characters with images available", tr: "Görseli olan karakter bulunamadı" },
-  no_scene_images_available: { en: "No scene images available", tr: "Sahne görseli bulunamadı" },
+  generate_video: { en: "Generate Video", tr: "Video Oluştur" },
+  generating_video: { en: "Generating video...", tr: "Video oluşturuluyor..." },
+  scene_image_prompt_label: { en: "Scene Image", tr: "Sahne Görseli" },
+  select_scene_image: { en: "Select an image first", tr: "Önce bir görsel seçin" },
   add_custom_scene: { en: "+ Add Scene", tr: "+ Sahne Ekle" },
   add_custom_scene_title: { en: "Add New Scene", tr: "Yeni Sahne Ekle" },
   custom_scenes: { en: "Custom Scenes", tr: "Özel Sahneler" },

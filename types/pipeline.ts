@@ -17,7 +17,9 @@ export interface Scene {
   id: string;
   title: string;
   characters: string[];
-  image_generation_prompt: string;
+  duration: number;
+  scene_image_prompt: string;
+  animation_prompt: string;
   dialogue: DialogueLine[];
   narration: string;
 }

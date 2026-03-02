@@ -5,24 +5,27 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-const SYSTEM_PROMPT = `You are a cinematic scene prompt engineer for AI image generation models (FLUX, Stable Diffusion, Midjourney style).
+const SYSTEM_PROMPT = `You are a cinematic scene prompt engineer for AI image and video generation.
 
-Given a scene title, optional narration text, and character names, produce a single detailed image generation prompt optimized for generating a high-quality cinematic scene illustration in 9:16 vertical/mobile format.
+Given a scene title, optional narration text, and character names, produce TWO prompts:
 
-FORMAT your prompt as: [scene composition and framing], [characters present: positions, actions, expressions], [environment and setting details], [time of day, weather, atmosphere], [lighting: direction, quality, color temperature], [mood and emotional tone], [style: cinematic, film-quality, dramatic], [quality: sharp focus, detailed, 8k, depth of field]
+1. SCENE IMAGE PROMPT — a detailed prompt for generating a STATIC cinematic scene image (a single frame) in 9:16 vertical format using FLUX Kontext text-to-image.
+   FORMAT: [scene composition and framing], [characters present: positions, actions, expressions], [environment and setting details], [time of day, weather, atmosphere], [lighting: direction, quality, color temperature], [mood and emotional tone], [style: cinematic photorealistic], [quality: sharp focus, 8k, film grain, depth of field]
+
+2. ANIMATION PROMPT — a prompt describing the MOTION and action for a 5-second video clip using Kling AI reference-to-video. Reference characters by their full name (the system will map names to @Element references).
+   FORMAT: Describe character movements, gestures, expression changes, camera motion (pan, zoom, dolly, truck), environmental motion (wind, rain, light changes). Keep it concise and action-focused.
 
 RULES:
-- Output ONLY the prompt text, nothing else. No quotes, no labels, no explanation.
+- Output ONLY valid JSON with two keys: "sceneImagePrompt" and "animationPrompt". No markdown, no explanations.
 - Be specific and visual. Avoid vague language.
-- Frame the composition for vertical 9:16 aspect ratio (tall, mobile-optimized).
-- If reference images are being used, phrase the prompt to guide the model to compose characters from the reference images into the described scene.
-- Keep the prompt between 80-200 words.
-- Focus on cinematic storytelling — the image should feel like a frame from a film.`;
+- Frame the scene image for vertical 9:16 aspect ratio (tall, mobile-optimized).
+- Keep each prompt between 50-150 words.
+- The scene image should feel like a frame from a film.
+- The animation prompt should describe what happens during 5 seconds of this scene.`;
 
 export async function POST(req: NextRequest) {
   try {
-    const { title, narration, characterNames, hasReferences } =
-      await req.json();
+    const { title, narration, characterNames } = await req.json();
 
     if (!title) {
       return NextResponse.json(
@@ -45,28 +48,36 @@ export async function POST(req: NextRequest) {
     if (characterNames?.length) {
       userMessage += `\nCharacters in scene: ${characterNames.join(", ")}`;
     }
-    if (hasReferences) {
-      userMessage += `\n\nReference images are being provided (character portraits and/or other scene images). Write the prompt to guide an image-to-image model to compose these references into the described scene. Use phrasing that directs the model to place and position the referenced characters within the scene.`;
-    }
 
     const response = await anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
-      max_tokens: 500,
+      max_tokens: 800,
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: userMessage }],
     });
 
     const textBlock = response.content.find((b) => b.type === "text");
-    const prompt = textBlock?.text?.trim() || "";
+    const raw = textBlock?.text?.trim() || "";
 
-    if (!prompt) {
+    if (!raw) {
       return NextResponse.json(
-        { error: "Failed to generate prompt" },
+        { error: "Failed to generate prompts" },
         { status: 502 }
       );
     }
 
-    return NextResponse.json({ prompt });
+    try {
+      const parsed = JSON.parse(raw);
+      return NextResponse.json({
+        sceneImagePrompt: parsed.sceneImagePrompt || "",
+        animationPrompt: parsed.animationPrompt || "",
+      });
+    } catch {
+      return NextResponse.json({
+        sceneImagePrompt: raw,
+        animationPrompt: "",
+      });
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     console.error("[scene-prompt-help] Error:", message);

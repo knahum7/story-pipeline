@@ -98,6 +98,7 @@ function SceneCard({ scene, characters }: { scene: Scene; characters: Character[
       <div className="px-4 py-3 border-b border-ink-muted flex items-center justify-between">
         <div className="flex items-center gap-3">
           <span className="text-xs font-mono text-amber-film">{scene.id}</span>
+          <Pill text={`${scene.duration || 5}s`} color="blue" />
         </div>
       </div>
 
@@ -140,7 +141,11 @@ function SceneCard({ scene, characters }: { scene: Scene; characters: Character[
           </div>
         )}
 
-        <PromptBox label={t("scene_image_prompt")} prompt={scene.image_generation_prompt} />
+        <PromptBox label={t("scene_image_prompt")} prompt={scene.scene_image_prompt} />
+
+        {scene.animation_prompt && (
+          <PromptBox label={t("animation_prompt")} prompt={scene.animation_prompt} />
+        )}
       </div>
     </div>
   );

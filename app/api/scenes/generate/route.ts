@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fal } from "@fal-ai/client";
 import { getSupabase } from "@/lib/supabase";
-import { ALL_MODELS, getSceneInput } from "@/lib/fal-models";
+import { SCENE_IMAGE_MODEL } from "@/lib/fal-models";
 
 fal.config({ credentials: () => process.env.FAL_KEY || "" });
 
@@ -10,37 +10,20 @@ interface FalImage {
   width?: number;
   height?: number;
   content_type?: string;
-  file_name?: string;
-  file_size?: number;
 }
 
 interface FalResult {
-  data: { images?: FalImage[]; seed?: number; description?: string };
+  data: { images?: FalImage[]; seed?: number };
   requestId?: string;
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const {
-      pipelineId,
-      sceneId,
-      prompt,
-      model,
-      referenceUrls,
-      characterNames,
-    } = await req.json();
+    const { pipelineId, sceneId, prompt } = await req.json();
 
-    if (!pipelineId || !sceneId || !prompt || !model) {
+    if (!pipelineId || !sceneId || !prompt) {
       return NextResponse.json(
-        { error: "Missing required fields: pipelineId, sceneId, prompt, model" },
-        { status: 400 }
-      );
-    }
-
-    const modelConfig = ALL_MODELS.find((m) => m.id === model);
-    if (!modelConfig) {
-      return NextResponse.json(
-        { error: `Unknown model: ${model}` },
+        { error: "Missing required fields: pipelineId, sceneId, prompt" },
         { status: 400 }
       );
     }
@@ -55,31 +38,19 @@ export async function POST(req: NextRequest) {
     const supabase = getSupabase();
     const startTime = Date.now();
 
-    const refs: string[] = referenceUrls || [];
-    const finalPrompt = prompt;
-
     console.log(
-      `[scenes] Generating ${sceneId} with ${model}, ${refs.length} ref(s), prompt: ${finalPrompt.slice(0, 150)}...`
+      `[scenes] Generating ${sceneId} with ${SCENE_IMAGE_MODEL}, prompt: ${prompt.slice(0, 150)}...`
     );
 
-    const sizeParams = getSceneInput(modelConfig);
     const input: Record<string, unknown> = {
-      prompt: finalPrompt,
-      ...sizeParams,
+      prompt,
+      aspect_ratio: "9:16",
       num_images: 1,
       output_format: "png",
     };
 
-    if (refs.length > 0 && modelConfig.referenceFormat) {
-      if (modelConfig.referenceFormat === "single") {
-        input.image_url = refs[0];
-      } else {
-        input.image_urls = refs;
-      }
-    }
-
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result = (await (fal as any).subscribe(model, { input })) as FalResult;
+    const result = (await (fal as any).subscribe(SCENE_IMAGE_MODEL, { input })) as FalResult;
 
     const images = result.data?.images || [];
     if (!images.length || !images[0].url) {
@@ -136,25 +107,13 @@ export async function POST(req: NextRequest) {
       .from("scenes")
       .getPublicUrl(storagePath);
 
-    const names: string[] = characterNames || [];
-    const refMeta =
-      refs.length > 0
-        ? {
-            character_refs: refs.map((url: string, i: number) => ({
-              name: names[i] || `ref_${i + 1}`,
-              image_url: url,
-            })),
-          }
-        : null;
-
     const { data: row, error: dbError } = await supabase
       .from("scene_images")
       .insert({
         pipeline_id: pipelineId,
         scene_id: sceneId,
-        prompt: finalPrompt,
-        model_used: model,
-        loras_used: refMeta,
+        prompt,
+        model_used: SCENE_IMAGE_MODEL,
         image_url: publicUrlData.publicUrl,
         width: imageWidth,
         height: imageHeight,

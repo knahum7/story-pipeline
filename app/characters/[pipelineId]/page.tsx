@@ -12,7 +12,6 @@ import {
   Sparkles,
   Trash2,
   X,
-  ChevronDown,
   Users,
   Film,
   RotateCcw,
@@ -23,7 +22,6 @@ import {
   Upload,
 } from "lucide-react";
 import { useLanguage } from "@/lib/language-context";
-import { FAL_MODELS, FAL_I2I_MODELS, DEFAULT_MODEL, DEFAULT_I2I_MODEL, ALL_MODELS } from "@/lib/fal-models";
 import { PipelineJSON, Character } from "@/types/pipeline";
 
 interface GeneratedImage {
@@ -49,7 +47,6 @@ export default function CharactersPage() {
   const [images, setImages] = useState<GeneratedImage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL);
   const [generating, setGenerating] = useState<Record<string, boolean>>({});
   const [generatingAll, setGeneratingAll] = useState(false);
   const [expandedImage, setExpandedImage] = useState<string | null>(null);
@@ -57,7 +54,6 @@ export default function CharactersPage() {
   const [editingPrompt, setEditingPrompt] = useState<Record<string, boolean>>({});
 
   const [charRefs, setCharRefs] = useState<Record<string, { file: File; preview: string }>>({});
-  const [charRefModels, setCharRefModels] = useState<Record<string, string>>({});
   const charRefInputRef = useRef<HTMLInputElement>(null);
   const charRefTargetRef = useRef<string | null>(null);
 
@@ -65,7 +61,6 @@ export default function CharactersPage() {
   const [newCharName, setNewCharName] = useState("");
   const [newCharDescription, setNewCharDescription] = useState("");
   const [newCharPrompt, setNewCharPrompt] = useState("");
-  const [newCharModel, setNewCharModel] = useState(DEFAULT_MODEL);
   const [referenceFile, setReferenceFile] = useState<File | null>(null);
   const [referencePreview, setReferencePreview] = useState<string | null>(null);
   const [generatingCustom, setGeneratingCustom] = useState(false);
@@ -107,9 +102,6 @@ export default function CharactersPage() {
     async (char: Character) => {
       const prompt = editedPrompts[char.id] || char.image_generation_prompt;
       const ref = charRefs[char.id];
-      const model = ref
-        ? (charRefModels[char.id] || DEFAULT_I2I_MODEL)
-        : selectedModel;
 
       setGenerating((prev) => ({ ...prev, [char.id]: true }));
       try {
@@ -132,7 +124,6 @@ export default function CharactersPage() {
             characterId: char.id,
             name: char.name,
             prompt,
-            model,
             referenceImageBase64,
             referenceContentType,
           }),
@@ -149,7 +140,7 @@ export default function CharactersPage() {
         setGenerating((prev) => ({ ...prev, [char.id]: false }));
       }
     },
-    [pipelineId, selectedModel, editedPrompts, charRefs, charRefModels, t]
+    [pipelineId, editedPrompts, charRefs, t]
   );
 
   const generateAllPortraits = useCallback(async () => {
@@ -192,7 +183,6 @@ export default function CharactersPage() {
     if (file && charId) {
       const preview = URL.createObjectURL(file);
       setCharRefs((prev) => ({ ...prev, [charId]: { file, preview } }));
-      setCharRefModels((prev) => ({ ...prev, [charId]: prev[charId] || DEFAULT_I2I_MODEL }));
     }
     if (e.target) e.target.value = "";
     charRefTargetRef.current = null;
@@ -204,7 +194,6 @@ export default function CharactersPage() {
     if (file && file.type.startsWith("image/")) {
       const preview = URL.createObjectURL(file);
       setCharRefs((prev) => ({ ...prev, [charId]: { file, preview } }));
-      setCharRefModels((prev) => ({ ...prev, [charId]: prev[charId] || DEFAULT_I2I_MODEL }));
     }
   }, []);
 
@@ -218,19 +207,16 @@ export default function CharactersPage() {
   }, []);
 
   const hasReference = !!referenceFile;
-  const activeModels = hasReference ? FAL_I2I_MODELS : FAL_MODELS;
 
   const handleReferenceChange = useCallback((file: File | null) => {
     if (file) {
       setReferenceFile(file);
       const url = URL.createObjectURL(file);
       setReferencePreview(url);
-      setNewCharModel(DEFAULT_I2I_MODEL);
     } else {
       if (referencePreview) URL.revokeObjectURL(referencePreview);
       setReferenceFile(null);
       setReferencePreview(null);
-      setNewCharModel(DEFAULT_MODEL);
     }
   }, [referencePreview]);
 
@@ -313,7 +299,6 @@ export default function CharactersPage() {
           characterId,
           name: newCharName.trim(),
           prompt: newCharPrompt.trim(),
-          model: newCharModel,
           referenceImageBase64,
           referenceContentType,
         }),
@@ -332,13 +317,12 @@ export default function CharactersPage() {
       setNewCharDescription("");
       setNewCharPrompt("");
       handleReferenceChange(null);
-      setNewCharModel(DEFAULT_MODEL);
     } catch (err) {
       alert(err instanceof Error ? err.message : t("generation_failed"));
     } finally {
       setGeneratingCustom(false);
     }
-  }, [newCharName, newCharPrompt, newCharModel, referenceFile, pipelineId, getNextCustomId, handleReferenceChange, t]);
+  }, [newCharName, newCharPrompt, referenceFile, pipelineId, getNextCustomId, handleReferenceChange, t]);
 
   const customImages = images.filter((img) => {
     const pipelineCharIds = pipeline?.characters?.map((c) => c.id) || [];
@@ -482,24 +466,6 @@ export default function CharactersPage() {
           </div>
 
           <div className="flex items-center gap-3 flex-wrap">
-            <div className="relative">
-              <select
-                value={selectedModel}
-                onChange={(e) => setSelectedModel(e.target.value)}
-                className="appearance-none bg-ink-soft border border-ink-muted rounded-lg px-3 py-2 pr-8 text-xs text-parchment/70 focus:outline-none focus:border-amber-film/50 cursor-pointer"
-              >
-                {FAL_MODELS.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.label} ({m.pricing})
-                  </option>
-                ))}
-              </select>
-              <ChevronDown
-                size={12}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-parchment/30 pointer-events-none"
-              />
-            </div>
-
             <button
               onClick={() => setShowAddModal(true)}
               className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm border border-amber-film/30 text-amber-glow hover:bg-amber-film/10 transition-colors"
@@ -667,25 +633,8 @@ export default function CharactersPage() {
                           </button>
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-[10px] text-parchment/30 mb-1">{t("model_label")} — Image-to-Image</p>
-                          <div className="relative">
-                            <select
-                              value={charRefModels[char.id] || DEFAULT_I2I_MODEL}
-                              onChange={(e) => setCharRefModels((prev) => ({ ...prev, [char.id]: e.target.value }))}
-                              className="w-full appearance-none bg-ink/60 border border-ink-muted rounded-lg px-2.5 py-1.5 pr-7 text-[11px] text-parchment/70 focus:outline-none focus:border-amber-film/50 cursor-pointer"
-                            >
-                              {FAL_I2I_MODELS.map((m) => (
-                                <option key={m.id} value={m.id}>
-                                  {m.label} ({m.pricing})
-                                </option>
-                              ))}
-                            </select>
-                            <ChevronDown
-                              size={10}
-                              className="absolute right-2 top-1/2 -translate-y-1/2 text-parchment/30 pointer-events-none"
-                            />
-                          </div>
-                          <p className="text-[10px] text-parchment/20 mt-1 truncate">
+                          <p className="text-[10px] text-violet-400 mb-1">FLUX Kontext I2I</p>
+                          <p className="text-[10px] text-parchment/20 truncate">
                             {charRefs[char.id].file.name}
                           </p>
                         </div>
@@ -725,7 +674,7 @@ export default function CharactersPage() {
                             <Trash2 size={12} />
                           </button>
                           <p className="text-[10px] text-parchment/30 mt-1 truncate">
-                            {ALL_MODELS.find((m) => m.id === img.model_used)?.label || img.model_used}
+                            {img.model_used.split("/").pop()}
                           </p>
                         </div>
                       ))}
@@ -771,7 +720,7 @@ export default function CharactersPage() {
                   </button>
                   <p className="text-xs text-parchment/60 mt-1.5 truncate font-semibold">{img.name}</p>
                   <p className="text-[10px] text-parchment/30 truncate">
-                    {ALL_MODELS.find((m) => m.id === img.model_used)?.label || img.model_used}
+                    {img.model_used.split("/").pop()}
                   </p>
                 </div>
               ))}
@@ -848,8 +797,7 @@ export default function CharactersPage() {
                     {img.name}
                   </p>
                   <p className="text-parchment/30 text-xs mt-1">
-                    {ALL_MODELS.find((m) => m.id === img.model_used)?.label ||
-                      img.model_used}
+                    {img.model_used.split("/").pop()}
                     {img.width && img.height && ` · ${img.width}x${img.height}`}
                   </p>
                   <p className="text-parchment/20 text-[10px] mt-1 font-mono">
@@ -960,28 +908,14 @@ export default function CharactersPage() {
                 )}
               </div>
 
-              {/* Model selector */}
-              <div>
-                <label className="text-[10px] text-parchment/30 uppercase tracking-wider font-semibold block mb-1.5">
-                  {t("model_label")} — {hasReference ? "Image-to-Image" : "Text-to-Image"}
-                </label>
-                <div className="relative">
-                  <select
-                    value={newCharModel}
-                    onChange={(e) => setNewCharModel(e.target.value)}
-                    className="w-full appearance-none bg-ink/60 border border-ink-muted rounded-lg px-3 py-2.5 pr-8 text-xs text-parchment/70 focus:outline-none focus:border-amber-film/50 cursor-pointer"
-                  >
-                    {activeModels.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.label} ({m.pricing}) — {m.description}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown
-                    size={12}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-parchment/30 pointer-events-none"
-                  />
-                </div>
+              {/* Model info */}
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-ink/40 border border-ink-muted/50">
+                <span className="text-[10px] text-parchment/30 uppercase tracking-wider font-semibold">
+                  {hasReference ? "Image-to-Image" : "Text-to-Image"}
+                </span>
+                <span className="text-[11px] text-parchment/50 font-mono">
+                  FLUX Kontext {hasReference ? "I2I" : "T2I"}
+                </span>
               </div>
 
               {/* Prompt with AI Help */}

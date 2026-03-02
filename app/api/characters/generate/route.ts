@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fal } from "@fal-ai/client";
 import { getSupabase } from "@/lib/supabase";
-import { ALL_MODELS } from "@/lib/fal-models";
+import { getCharModel, CHAR_I2I_MODEL } from "@/lib/fal-models";
 
 fal.config({ credentials: () => process.env.FAL_KEY || "" });
 
@@ -24,20 +24,12 @@ interface FalSubscribeResult {
 
 export async function POST(req: NextRequest) {
   try {
-    const { pipelineId, characterId, name, prompt, model, referenceImageBase64, referenceContentType } =
+    const { pipelineId, characterId, name, prompt, referenceImageBase64, referenceContentType } =
       await req.json();
 
-    if (!pipelineId || !characterId || !name || !prompt || !model) {
+    if (!pipelineId || !characterId || !name || !prompt) {
       return NextResponse.json(
-        { error: "Missing required fields: pipelineId, characterId, name, prompt, model" },
-        { status: 400 }
-      );
-    }
-
-    const modelConfig = ALL_MODELS.find((m) => m.id === model);
-    if (!modelConfig) {
-      return NextResponse.json(
-        { error: `Unknown model: ${model}` },
+        { error: "Missing required fields: pipelineId, characterId, name, prompt" },
         { status: 400 }
       );
     }
@@ -49,14 +41,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const hasReference = !!referenceImageBase64;
+    const model = getCharModel(hasReference);
+
     const supabase = getSupabase();
     const startTime = Date.now();
     console.log(
-      `[characters] Generating portrait for "${name}" (${characterId}) with ${model}${referenceImageBase64 ? " + reference" : ""}`
+      `[characters] Generating portrait for "${name}" (${characterId}) with ${model}${hasReference ? " + reference" : ""}`
     );
 
     let referenceUrl: string | null = null;
-    if (referenceImageBase64 && modelConfig.type === "image-to-image") {
+    if (hasReference) {
       const refExt = (referenceContentType || "image/png").includes("jpeg") ? "jpg"
         : (referenceContentType || "image/png").includes("webp") ? "webp" : "png";
       const refPath = `${pipelineId}/${characterId}/ref-${Date.now()}.${refExt}`;
@@ -83,35 +78,25 @@ export async function POST(req: NextRequest) {
       referenceUrl = refPublicUrl.publicUrl;
     }
 
-    const sizeParams = modelConfig.portraitInput ?? { image_size: "portrait_4_3" };
-
     const input: Record<string, unknown> = {
       prompt,
-      ...sizeParams,
+      aspect_ratio: "3:4",
       num_images: 1,
+      output_format: "png",
     };
 
-    if (referenceUrl && modelConfig.referenceFormat) {
-      if (modelConfig.referenceFormat === "single") {
-        input.image_url = referenceUrl;
-      } else {
-        input.image_urls = [referenceUrl];
-      }
+    if (referenceUrl && model === CHAR_I2I_MODEL) {
+      input.image_url = referenceUrl;
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = (await (fal as any).subscribe(model, { input })) as FalSubscribeResult;
 
-    console.log(
-      `[characters] fal.ai response keys: ${Object.keys(result).join(", ")}`,
-      result.data ? `data keys: ${Object.keys(result.data).join(", ")}` : "no data"
-    );
-
     const images = result.data?.images || [];
     if (!images.length || !images[0].url) {
       console.error("[characters] No image returned from fal.ai — full response:", JSON.stringify(result).slice(0, 500));
       return NextResponse.json(
-        { error: "No image was generated. Try a different prompt or model." },
+        { error: "No image was generated. Try a different prompt." },
         { status: 502 }
       );
     }
@@ -127,7 +112,6 @@ export async function POST(req: NextRequest) {
 
     const imageResponse = await fetch(falImageUrl);
     if (!imageResponse.ok) {
-      console.error("[characters] Failed to download image from fal CDN");
       return NextResponse.json(
         { error: "Failed to download generated image" },
         { status: 502 }
@@ -135,7 +119,7 @@ export async function POST(req: NextRequest) {
     }
 
     const imageBuffer = await imageResponse.arrayBuffer();
-    const contentType = imageResponse.headers.get("content-type") || "image/webp";
+    const contentType = imageResponse.headers.get("content-type") || "image/png";
     const ext = contentType.includes("png") ? "png" : contentType.includes("jpeg") ? "jpg" : "webp";
 
     const storagePath = `${pipelineId}/${characterId}/portrait-${Date.now()}.${ext}`;

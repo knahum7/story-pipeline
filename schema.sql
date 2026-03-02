@@ -82,6 +82,23 @@ CREATE TABLE IF NOT EXISTS "public"."scene_images" (
 ALTER TABLE "public"."scene_images" OWNER TO "postgres";
 
 
+CREATE TABLE IF NOT EXISTS "public"."scene_videos" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "pipeline_id" "uuid" NOT NULL,
+    "scene_id" "text" NOT NULL,
+    "scene_image_id" "uuid",
+    "prompt" "text" NOT NULL,
+    "model_used" "text" NOT NULL,
+    "video_url" "text" NOT NULL,
+    "duration" integer,
+    "fal_request_id" "text",
+    "created_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."scene_videos" OWNER TO "postgres";
+
+
 ALTER TABLE ONLY "public"."characters"
     ADD CONSTRAINT "characters_pkey" PRIMARY KEY ("id");
 
@@ -97,6 +114,11 @@ ALTER TABLE ONLY "public"."scene_images"
 
 
 
+ALTER TABLE ONLY "public"."scene_videos"
+    ADD CONSTRAINT "scene_videos_pkey" PRIMARY KEY ("id");
+
+
+
 CREATE INDEX "idx_characters_lookup" ON "public"."characters" USING "btree" ("pipeline_id", "character_id");
 
 
@@ -109,6 +131,10 @@ CREATE INDEX "idx_scene_images_lookup" ON "public"."scene_images" USING "btree" 
 
 
 
+CREATE INDEX "idx_scene_videos_lookup" ON "public"."scene_videos" USING "btree" ("pipeline_id", "scene_id");
+
+
+
 ALTER TABLE ONLY "public"."characters"
     ADD CONSTRAINT "characters_pipeline_id_fkey" FOREIGN KEY ("pipeline_id") REFERENCES "public"."pipelines"("id") ON DELETE CASCADE;
 
@@ -116,6 +142,16 @@ ALTER TABLE ONLY "public"."characters"
 
 ALTER TABLE ONLY "public"."scene_images"
     ADD CONSTRAINT "scene_images_pipeline_id_fkey" FOREIGN KEY ("pipeline_id") REFERENCES "public"."pipelines"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."scene_videos"
+    ADD CONSTRAINT "scene_videos_pipeline_id_fkey" FOREIGN KEY ("pipeline_id") REFERENCES "public"."pipelines"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."scene_videos"
+    ADD CONSTRAINT "scene_videos_scene_image_id_fkey" FOREIGN KEY ("scene_image_id") REFERENCES "public"."scene_images"("id") ON DELETE SET NULL;
 
 
 
@@ -141,6 +177,12 @@ GRANT ALL ON TABLE "public"."pipelines" TO "service_role";
 GRANT ALL ON TABLE "public"."scene_images" TO "anon";
 GRANT ALL ON TABLE "public"."scene_images" TO "authenticated";
 GRANT ALL ON TABLE "public"."scene_images" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."scene_videos" TO "anon";
+GRANT ALL ON TABLE "public"."scene_videos" TO "authenticated";
+GRANT ALL ON TABLE "public"."scene_videos" TO "service_role";
 
 
 
