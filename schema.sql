@@ -27,36 +27,6 @@ SET default_tablespace = '';
 SET default_table_access_method = "heap";
 
 
-CREATE TABLE IF NOT EXISTS "public"."character_loras" (
-    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "pipeline_id" "uuid" NOT NULL,
-    "character_id" "text" NOT NULL,
-    "trigger_word" "text" NOT NULL,
-    "lora_url" "text" NOT NULL,
-    "training_images_count" integer,
-    "fal_request_id" "text",
-    "status" "text" DEFAULT 'training'::"text",
-    "created_at" timestamp with time zone DEFAULT "now"()
-);
-
-
-ALTER TABLE "public"."character_loras" OWNER TO "postgres";
-
-
-CREATE TABLE IF NOT EXISTS "public"."character_views" (
-    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "pipeline_id" "uuid" NOT NULL,
-    "character_id" "text" NOT NULL,
-    "azimuth" integer,
-    "elevation" integer,
-    "image_url" "text" NOT NULL,
-    "created_at" timestamp with time zone DEFAULT "now"()
-);
-
-
-ALTER TABLE "public"."character_views" OWNER TO "postgres";
-
-
 CREATE TABLE IF NOT EXISTS "public"."characters" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "pipeline_id" "uuid" NOT NULL,
@@ -112,16 +82,6 @@ CREATE TABLE IF NOT EXISTS "public"."scene_images" (
 ALTER TABLE "public"."scene_images" OWNER TO "postgres";
 
 
-ALTER TABLE ONLY "public"."character_loras"
-    ADD CONSTRAINT "character_loras_pkey" PRIMARY KEY ("id");
-
-
-
-ALTER TABLE ONLY "public"."character_views"
-    ADD CONSTRAINT "character_views_pkey" PRIMARY KEY ("id");
-
-
-
 ALTER TABLE ONLY "public"."characters"
     ADD CONSTRAINT "characters_pkey" PRIMARY KEY ("id");
 
@@ -137,14 +97,6 @@ ALTER TABLE ONLY "public"."scene_images"
 
 
 
-CREATE INDEX "idx_character_loras_lookup" ON "public"."character_loras" USING "btree" ("pipeline_id", "character_id");
-
-
-
-CREATE INDEX "idx_character_views_lookup" ON "public"."character_views" USING "btree" ("pipeline_id", "character_id");
-
-
-
 CREATE INDEX "idx_characters_lookup" ON "public"."characters" USING "btree" ("pipeline_id", "character_id");
 
 
@@ -154,16 +106,6 @@ CREATE INDEX "idx_pipelines_created_at" ON "public"."pipelines" USING "btree" ("
 
 
 CREATE INDEX "idx_scene_images_lookup" ON "public"."scene_images" USING "btree" ("pipeline_id", "scene_id");
-
-
-
-ALTER TABLE ONLY "public"."character_loras"
-    ADD CONSTRAINT "character_loras_pipeline_id_fkey" FOREIGN KEY ("pipeline_id") REFERENCES "public"."pipelines"("id") ON DELETE CASCADE;
-
-
-
-ALTER TABLE ONLY "public"."character_views"
-    ADD CONSTRAINT "character_views_pipeline_id_fkey" FOREIGN KEY ("pipeline_id") REFERENCES "public"."pipelines"("id") ON DELETE CASCADE;
 
 
 
@@ -181,18 +123,6 @@ GRANT USAGE ON SCHEMA "public" TO "postgres";
 GRANT USAGE ON SCHEMA "public" TO "anon";
 GRANT USAGE ON SCHEMA "public" TO "authenticated";
 GRANT USAGE ON SCHEMA "public" TO "service_role";
-
-
-
-GRANT ALL ON TABLE "public"."character_loras" TO "anon";
-GRANT ALL ON TABLE "public"."character_loras" TO "authenticated";
-GRANT ALL ON TABLE "public"."character_loras" TO "service_role";
-
-
-
-GRANT ALL ON TABLE "public"."character_views" TO "anon";
-GRANT ALL ON TABLE "public"."character_views" TO "authenticated";
-GRANT ALL ON TABLE "public"."character_views" TO "service_role";
 
 
 
