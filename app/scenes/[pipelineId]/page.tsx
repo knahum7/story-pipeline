@@ -13,8 +13,6 @@ import {
   Trash2,
   X,
   Film,
-  CheckCircle2,
-  AlertCircle,
   Users,
   Plus,
   Pencil,
@@ -22,9 +20,17 @@ import {
   MapPin,
   ChevronDown,
   ChevronUp,
+  ImageIcon,
+  Wand2,
 } from "lucide-react";
 import { useLanguage } from "@/lib/language-context";
-import { PipelineJSON, Scene, Character, Setting } from "@/types/pipeline";
+import { PipelineJSON, Scene, Setting } from "@/types/pipeline";
+import {
+  ALL_MODELS,
+  getSceneModels,
+  getDefaultSceneModel,
+  DEFAULT_MODEL,
+} from "@/lib/fal-models";
 
 interface SceneImage {
   id: string;
@@ -33,10 +39,7 @@ interface SceneImage {
   prompt: string;
   model_used: string;
   loras_used: {
-    loras?: { path: string; scale: number }[];
-    trigger_words?: string[];
-    trigger_map?: Record<string, string>;
-    character_refs?: { character_id: string; name: string; image_url: string }[];
+    character_refs?: { name: string; image_url: string }[];
   } | null;
   image_url: string;
   width: number | null;
@@ -45,6 +48,28 @@ interface SceneImage {
   created_at: string;
 }
 
+interface CharacterImage {
+  id: string;
+  pipeline_id: string;
+  character_id: string;
+  name: string;
+  image_url: string;
+  created_at: string;
+}
+
+interface CharRef {
+  characterId: string;
+  name: string;
+  imageUrl: string;
+  imageDbId: string;
+}
+
+interface SceneRefItem {
+  fromSceneId: string;
+  title: string;
+  imageUrl: string;
+  imageDbId: string;
+}
 
 function expandNameVariants(fullNames: string[]): string[] {
   const variants = new Set<string>();
@@ -109,62 +134,76 @@ export default function ScenesPage() {
 
   const [pipeline, setPipeline] = useState<PipelineJSON | null>(null);
   const [sceneImages, setSceneImages] = useState<SceneImage[]>([]);
-  const [charPortraits, setCharPortraits] = useState<Record<string, string>>(
-    {}
-  );
+  const [allCharImages, setAllCharImages] = useState<CharacterImage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [generating, setGenerating] = useState<Record<string, boolean>>({});
   const [generatingAll, setGeneratingAll] = useState(false);
   const [expandedImage, setExpandedImage] = useState<string | null>(null);
 
-  const [editedPrompts, setEditedPrompts] = useState<Record<string, string>>(
-    {}
-  );
-  const [editedChars, setEditedChars] = useState<Record<string, string[]>>({});
-  const [editingPrompt, setEditingPrompt] = useState<Record<string, boolean>>(
-    {}
-  );
+  const [editedPrompts, setEditedPrompts] = useState<Record<string, string>>({});
+  const [editingPrompt, setEditingPrompt] = useState<Record<string, boolean>>({});
 
-  const [includeSetting, setIncludeSetting] = useState<Record<string, boolean>>(
-    {}
-  );
-  const [editedSettingPrompts, setEditedSettingPrompts] = useState<
-    Record<string, string>
-  >({});
-  const [editingSettingPrompt, setEditingSettingPrompt] = useState<
-    Record<string, boolean>
-  >({});
-  const [settingCollapsed, setSettingCollapsed] = useState<
-    Record<string, boolean>
-  >({});
+  const [includeSetting, setIncludeSetting] = useState<Record<string, boolean>>({});
+  const [editedSettingPrompts, setEditedSettingPrompts] = useState<Record<string, string>>({});
+  const [editingSettingPrompt, setEditingSettingPrompt] = useState<Record<string, boolean>>({});
+  const [settingCollapsed, setSettingCollapsed] = useState<Record<string, boolean>>({});
+
+  const [charRefsPerScene, setCharRefsPerScene] = useState<Record<string, CharRef[]>>({});
+  const [sceneRefsPerScene, setSceneRefsPerScene] = useState<Record<string, SceneRefItem[]>>({});
+  const [sceneModels, setSceneModels] = useState<Record<string, string>>({});
+
+  const [charPickerOpen, setCharPickerOpen] = useState<string | null>(null);
+  const [charPickerExpanded, setCharPickerExpanded] = useState<string | null>(null);
+  const [scenePickerOpen, setScenePickerOpen] = useState<string | null>(null);
+
+  const [showAddSceneModal, setShowAddSceneModal] = useState(false);
+  const [newSceneTitle, setNewSceneTitle] = useState("");
+  const [newSceneDesc, setNewSceneDesc] = useState("");
+  const [newScenePrompt, setNewScenePrompt] = useState("");
+  const [customCharRefs, setCustomCharRefs] = useState<CharRef[]>([]);
+  const [customSceneRefs, setCustomSceneRefs] = useState<SceneRefItem[]>([]);
+  const [customModel, setCustomModel] = useState(DEFAULT_MODEL);
+  const [generatingCustomScene, setGeneratingCustomScene] = useState(false);
+  const [sceneAiHelpLoading, setSceneAiHelpLoading] = useState(false);
+  const [customCharPickerOpen, setCustomCharPickerOpen] = useState(false);
+  const [customCharPickerExpanded, setCustomCharPickerExpanded] = useState<string | null>(null);
+  const [customScenePickerOpen, setCustomScenePickerOpen] = useState(false);
 
   const overlayRef = useRef<HTMLDivElement>(null);
 
-  const allCharacters = useMemo(
-    () => pipeline?.characters || [],
-    [pipeline]
-  );
+  const allCharacters = useMemo(() => pipeline?.characters || [], [pipeline]);
+
+  const charImageGroups = useMemo(() => {
+    const groups: Record<string, CharacterImage[]> = {};
+    for (const img of allCharImages) {
+      if (!groups[img.character_id]) groups[img.character_id] = [];
+      groups[img.character_id].push(img);
+    }
+    return groups;
+  }, [allCharImages]);
 
   const getCharName = useCallback(
     (charId: string): string => {
       const char = allCharacters.find((c) => c.id === charId);
-      return char?.name || charId;
+      if (char) return char.name;
+      const imgs = allCharImages.filter((i) => i.character_id === charId);
+      return imgs[0]?.name || charId;
     },
-    [allCharacters]
+    [allCharacters, allCharImages]
   );
-
-  const charNameMap = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const c of allCharacters) {
-      map.set(c.id, c.name);
-    }
-    return map;
-  }, [allCharacters]);
 
   const getSettingForScene = useCallback(
     (settingId: string): Setting | undefined => {
       return pipeline?.settings?.find((s) => s.id === settingId);
+    },
+    [pipeline]
+  );
+
+  const getSceneTitle = useCallback(
+    (sceneId: string): string => {
+      const s = pipeline?.scenes?.find((sc) => sc.id === sceneId);
+      return s?.title || sceneId;
     },
     [pipeline]
   );
@@ -180,16 +219,14 @@ export default function ScenesPage() {
 
         if (!pipelineRes.ok) throw new Error("Failed to load pipeline");
         const pData = await pipelineRes.json();
-        setPipeline(pData.pipeline_data);
+        const pipelineData = pData.pipeline_data as PipelineJSON;
+        setPipeline(pipelineData);
 
         const prompts: Record<string, string> = {};
-        const chars: Record<string, string[]> = {};
         const settingToggles: Record<string, boolean> = {};
         const settingPrompts: Record<string, string> = {};
-        const pipelineData = pData.pipeline_data;
         for (const s of pipelineData?.scenes || []) {
           prompts[s.id] = s.image_generation_prompt || "";
-          chars[s.id] = [...(s.characters || [])];
           settingToggles[s.id] = true;
           const setting = pipelineData?.settings?.find(
             (st: Setting) => st.id === s.setting_id
@@ -197,7 +234,6 @@ export default function ScenesPage() {
           settingPrompts[s.id] = setting?.image_generation_prompt || "";
         }
         setEditedPrompts(prompts);
-        setEditedChars(chars);
         setIncludeSetting(settingToggles);
         setEditedSettingPrompts(settingPrompts);
 
@@ -206,16 +242,33 @@ export default function ScenesPage() {
           setSceneImages(sData.scenes || []);
         }
 
+        let charImages: CharacterImage[] = [];
         if (charsRes.ok) {
           const cData = await charsRes.json();
-          const portraits: Record<string, string> = {};
-          for (const c of cData.characters || []) {
-            if (!portraits[c.character_id]) {
-              portraits[c.character_id] = c.image_url;
+          charImages = cData.characters || [];
+          setAllCharImages(charImages);
+        }
+
+        const defaultRefs: Record<string, CharRef[]> = {};
+        for (const scene of pipelineData?.scenes || []) {
+          const refs: CharRef[] = [];
+          const seen = new Set<string>();
+          for (const charId of scene.characters || []) {
+            if (seen.has(charId)) continue;
+            seen.add(charId);
+            const img = charImages.find((i) => i.character_id === charId);
+            if (img) {
+              refs.push({
+                characterId: charId,
+                name: img.name,
+                imageUrl: img.image_url,
+                imageDbId: img.id,
+              });
             }
           }
-          setCharPortraits(portraits);
+          defaultRefs[scene.id] = refs;
         }
+        setCharRefsPerScene(defaultRefs);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load");
       } finally {
@@ -225,18 +278,28 @@ export default function ScenesPage() {
     load();
   }, [pipelineId]);
 
-  const addCharToScene = useCallback(
-    (sceneId: string, charId: string) => {
-      setEditedChars((prev) => {
-        const current = prev[sceneId] || [];
-        if (current.includes(charId)) return prev;
-        return { ...prev, [sceneId]: [...current, charId] };
+  const addCharRefToScene = useCallback(
+    (sceneId: string, img: CharacterImage) => {
+      setCharRefsPerScene((prev) => {
+        const existing = prev[sceneId] || [];
+        const replaced = existing.filter((r) => r.characterId !== img.character_id);
+        return {
+          ...prev,
+          [sceneId]: [
+            ...replaced,
+            {
+              characterId: img.character_id,
+              name: img.name,
+              imageUrl: img.image_url,
+              imageDbId: img.id,
+            },
+          ],
+        };
       });
 
-      const name = getCharName(charId);
       setEditedPrompts((prev) => {
         const prompt = prev[sceneId] || "";
-        const alreadyPresent = name
+        const alreadyPresent = img.name
           .split(/\s+/)
           .some(
             (part) =>
@@ -244,59 +307,68 @@ export default function ScenesPage() {
               prompt.toLowerCase().includes(part.toLowerCase())
           );
         if (alreadyPresent) return prev;
-        return { ...prev, [sceneId]: `${name}, ${prompt}` };
+        return { ...prev, [sceneId]: `${img.name}, ${prompt}` };
       });
+
+      setCharPickerOpen(null);
+      setCharPickerExpanded(null);
     },
-    [getCharName]
+    []
   );
 
-  const removeCharFromScene = useCallback(
-    (sceneId: string, charId: string) => {
-      setEditedChars((prev) => {
-        const current = prev[sceneId] || [];
-        return { ...prev, [sceneId]: current.filter((id) => id !== charId) };
-      });
+  const removeCharRefFromScene = useCallback((sceneId: string, imageDbId: string) => {
+    setCharRefsPerScene((prev) => {
+      const existing = prev[sceneId] || [];
+      return { ...prev, [sceneId]: existing.filter((r) => r.imageDbId !== imageDbId) };
+    });
+  }, []);
 
-      const name = getCharName(charId);
-      setEditedPrompts((prev) => {
-        const prompt = prev[sceneId] || "";
-        const regex = new RegExp(
-          `${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[,\\s]*`,
-          "gi"
-        );
-        const cleaned = prompt.replace(regex, "").replace(/^[,\s]+/, "").trim();
-        return { ...prev, [sceneId]: cleaned };
+  const addSceneRefToScene = useCallback(
+    (sceneId: string, img: SceneImage) => {
+      setSceneRefsPerScene((prev) => {
+        const existing = prev[sceneId] || [];
+        if (existing.some((r) => r.imageDbId === img.id)) return prev;
+        return {
+          ...prev,
+          [sceneId]: [
+            ...existing,
+            {
+              fromSceneId: img.scene_id,
+              title: getSceneTitle(img.scene_id),
+              imageUrl: img.image_url,
+              imageDbId: img.id,
+            },
+          ],
+        };
       });
+      setScenePickerOpen(null);
     },
-    [getCharName]
+    [getSceneTitle]
   );
 
-  const promptContainsCharacter = useCallback(
-    (prompt: string, charId: string): boolean => {
-      const name = getCharName(charId);
-      const lower = prompt.toLowerCase();
-      if (lower.includes(name.toLowerCase())) return true;
-      return name.split(/\s+/).some(
-        (part) => part.length >= 2 && lower.includes(part.toLowerCase())
-      );
+  const removeSceneRefFromScene = useCallback((sceneId: string, imageDbId: string) => {
+    setSceneRefsPerScene((prev) => {
+      const existing = prev[sceneId] || [];
+      return { ...prev, [sceneId]: existing.filter((r) => r.imageDbId !== imageDbId) };
+    });
+  }, []);
+
+  const getRefCount = useCallback(
+    (sceneId: string) => {
+      return (charRefsPerScene[sceneId]?.length || 0) + (sceneRefsPerScene[sceneId]?.length || 0);
     },
-    [getCharName]
+    [charRefsPerScene, sceneRefsPerScene]
   );
 
-  const handlePromptChange = useCallback(
-    (sceneId: string, newPrompt: string) => {
-      setEditedPrompts((prev) => ({ ...prev, [sceneId]: newPrompt }));
-
-      setEditedChars((prev) => {
-        const current = prev[sceneId] || [];
-        const updated = current.filter((charId) =>
-          promptContainsCharacter(newPrompt, charId)
-        );
-        if (updated.length === current.length) return prev;
-        return { ...prev, [sceneId]: updated };
-      });
+  const getActiveModel = useCallback(
+    (sceneId: string) => {
+      const refCount = getRefCount(sceneId);
+      const models = getSceneModels(refCount);
+      const current = sceneModels[sceneId];
+      if (current && models.some((m) => m.id === current)) return current;
+      return getDefaultSceneModel(refCount);
     },
-    [promptContainsCharacter]
+    [sceneModels, getRefCount]
   );
 
   const resetScene = useCallback(
@@ -307,14 +379,8 @@ export default function ScenesPage() {
         ...prev,
         [sceneId]: scene.image_generation_prompt,
       }));
-      setEditedChars((prev) => ({
-        ...prev,
-        [sceneId]: [...scene.characters],
-      }));
       setIncludeSetting((prev) => ({ ...prev, [sceneId]: true }));
-      const setting = pipeline?.settings?.find(
-        (s) => s.id === scene.setting_id
-      );
+      const setting = pipeline?.settings?.find((s) => s.id === scene.setting_id);
       if (setting) {
         setEditedSettingPrompts((prev) => ({
           ...prev,
@@ -322,17 +388,47 @@ export default function ScenesPage() {
         }));
       }
       setEditingSettingPrompt((prev) => ({ ...prev, [sceneId]: false }));
+
+      const refs: CharRef[] = [];
+      const seen = new Set<string>();
+      for (const charId of scene.characters || []) {
+        if (seen.has(charId)) continue;
+        seen.add(charId);
+        const img = allCharImages.find((i) => i.character_id === charId);
+        if (img) {
+          refs.push({
+            characterId: charId,
+            name: img.name,
+            imageUrl: img.image_url,
+            imageDbId: img.id,
+          });
+        }
+      }
+      setCharRefsPerScene((prev) => ({ ...prev, [sceneId]: refs }));
+      setSceneRefsPerScene((prev) => ({ ...prev, [sceneId]: [] }));
+      setSceneModels((prev) => {
+        const next = { ...prev };
+        delete next[sceneId];
+        return next;
+      });
     },
-    [pipeline]
+    [pipeline, allCharImages]
   );
 
   const generateScene = useCallback(
     async (scene: Scene) => {
       const prompt = editedPrompts[scene.id] || scene.image_generation_prompt;
-      const charIds = editedChars[scene.id] || scene.characters;
+      const charRefs = charRefsPerScene[scene.id] || [];
+      const sceneRefs = sceneRefsPerScene[scene.id] || [];
+      const allRefUrls = [
+        ...charRefs.map((r) => r.imageUrl),
+        ...sceneRefs.map((r) => r.imageUrl),
+      ];
+      const model = getActiveModel(scene.id);
+      const characterNames = charRefs.map((r) => r.name);
+
       const useSettingPrompt =
-        includeSetting[scene.id] !== false &&
-        editedSettingPrompts[scene.id];
+        includeSetting[scene.id] !== false && editedSettingPrompts[scene.id];
 
       setGenerating((prev) => ({ ...prev, [scene.id]: true }));
       try {
@@ -343,14 +439,14 @@ export default function ScenesPage() {
             pipelineId,
             sceneId: scene.id,
             prompt,
-            characterIds: charIds,
+            model,
+            referenceUrls: allRefUrls,
             settingPrompt: useSettingPrompt || undefined,
+            characterNames,
           }),
         });
         if (!res.ok) {
-          const err = await res
-            .json()
-            .catch(() => ({ error: "Generation failed" }));
+          const err = await res.json().catch(() => ({ error: "Generation failed" }));
           throw new Error(err.error || "Generation failed");
         }
         const newImage: SceneImage = await res.json();
@@ -361,7 +457,16 @@ export default function ScenesPage() {
         setGenerating((prev) => ({ ...prev, [scene.id]: false }));
       }
     },
-    [pipelineId, editedPrompts, editedChars, includeSetting, editedSettingPrompts, t]
+    [
+      pipelineId,
+      editedPrompts,
+      charRefsPerScene,
+      sceneRefsPerScene,
+      includeSetting,
+      editedSettingPrompts,
+      getActiveModel,
+      t,
+    ]
   );
 
   const generateAllScenes = useCallback(async () => {
@@ -393,17 +498,171 @@ export default function ScenesPage() {
     [t, expandedImage]
   );
 
-  // Keyboard navigation for expanded overlay
+  const handleSceneAiHelp = useCallback(
+    async (sceneId: string) => {
+      const scene = pipeline?.scenes?.find((s) => s.id === sceneId);
+      if (!scene) return;
+
+      const currentPrompt = editedPrompts[sceneId] || "";
+      if (currentPrompt.trim()) {
+        if (!confirm(t("ai_help_overwrite"))) return;
+      }
+
+      setGenerating((prev) => ({ ...prev, [`ai_${sceneId}`]: true }));
+      try {
+        const charRefs = charRefsPerScene[sceneId] || [];
+        const sceneRefs = sceneRefsPerScene[sceneId] || [];
+        const setting = getSettingForScene(scene.setting_id);
+
+        const res = await fetch("/api/scenes/prompt-help", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: scene.title,
+            narrative: scene.narrative,
+            emotion: scene.emotion,
+            characterNames: charRefs.map((r) => r.name),
+            hasReferences: charRefs.length + sceneRefs.length > 0,
+            settingDescription: setting
+              ? `${setting.name}: ${setting.description}`
+              : undefined,
+          }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: "Failed" }));
+          throw new Error(err.error || "Failed to generate prompt");
+        }
+        const { prompt } = await res.json();
+        setEditedPrompts((prev) => ({ ...prev, [sceneId]: prompt }));
+      } catch (err) {
+        alert(err instanceof Error ? err.message : "Failed to generate prompt");
+      } finally {
+        setGenerating((prev) => ({ ...prev, [`ai_${sceneId}`]: false }));
+      }
+    },
+    [pipeline, editedPrompts, charRefsPerScene, sceneRefsPerScene, getSettingForScene, t]
+  );
+
+  const getNextCustomSceneId = useCallback(() => {
+    const customImgs = sceneImages.filter((img) => img.scene_id.startsWith("custom_scene_"));
+    const nums = customImgs.map((img) => {
+      const m = img.scene_id.match(/custom_scene_(\d+)/);
+      return m ? parseInt(m[1], 10) : 0;
+    });
+    const max = nums.length > 0 ? Math.max(...nums) : 0;
+    return `custom_scene_${String(max + 1).padStart(2, "0")}`;
+  }, [sceneImages]);
+
+  const handleCustomSceneAiHelp = useCallback(async () => {
+    if (!newSceneTitle.trim()) {
+      alert(t("name_required"));
+      return;
+    }
+    if (newScenePrompt.trim()) {
+      if (!confirm(t("ai_help_overwrite"))) return;
+    }
+    setSceneAiHelpLoading(true);
+    try {
+      const res = await fetch("/api/scenes/prompt-help", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: newSceneTitle,
+          narrative: newSceneDesc,
+          characterNames: customCharRefs.map((r) => r.name),
+          hasReferences: customCharRefs.length + customSceneRefs.length > 0,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Failed" }));
+        throw new Error(err.error || "Failed to generate prompt");
+      }
+      const { prompt } = await res.json();
+      setNewScenePrompt(prompt);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to generate prompt");
+    } finally {
+      setSceneAiHelpLoading(false);
+    }
+  }, [newSceneTitle, newSceneDesc, newScenePrompt, customCharRefs, customSceneRefs, t]);
+
+  const handleGenerateCustomScene = useCallback(async () => {
+    if (!newSceneTitle.trim()) {
+      alert(t("name_required"));
+      return;
+    }
+    if (!newScenePrompt.trim()) {
+      alert(t("prompt_required"));
+      return;
+    }
+
+    setGeneratingCustomScene(true);
+    try {
+      const allRefUrls = [
+        ...customCharRefs.map((r) => r.imageUrl),
+        ...customSceneRefs.map((r) => r.imageUrl),
+      ];
+      const sceneId = getNextCustomSceneId();
+
+      const res = await fetch("/api/scenes/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pipelineId,
+          sceneId,
+          prompt: newScenePrompt.trim(),
+          model: customModel,
+          referenceUrls: allRefUrls,
+          characterNames: customCharRefs.map((r) => r.name),
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Generation failed" }));
+        throw new Error(err.error || "Generation failed");
+      }
+
+      const newImage: SceneImage = await res.json();
+      setSceneImages((prev) => [...prev, newImage]);
+
+      setShowAddSceneModal(false);
+      setNewSceneTitle("");
+      setNewSceneDesc("");
+      setNewScenePrompt("");
+      setCustomCharRefs([]);
+      setCustomSceneRefs([]);
+      setCustomModel(DEFAULT_MODEL);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : t("generation_failed"));
+    } finally {
+      setGeneratingCustomScene(false);
+    }
+  }, [
+    newSceneTitle,
+    newScenePrompt,
+    customModel,
+    customCharRefs,
+    customSceneRefs,
+    pipelineId,
+    getNextCustomSceneId,
+    t,
+  ]);
+
+  const customRefCount = customCharRefs.length + customSceneRefs.length;
+  const customAvailableModels = getSceneModels(customRefCount);
+
+  useEffect(() => {
+    if (!customAvailableModels.some((m) => m.id === customModel)) {
+      setCustomModel(getDefaultSceneModel(customRefCount));
+    }
+  }, [customRefCount, customAvailableModels, customModel]);
+
   useEffect(() => {
     if (!expandedImage) return;
     overlayRef.current?.focus();
     const currentIdx = sceneImages.findIndex((i) => i.id === expandedImage);
     const handleKey = (e: KeyboardEvent) => {
-      if (
-        e.key === "ArrowRight" ||
-        e.key === "ArrowLeft" ||
-        e.key === "Escape"
-      ) {
+      if (e.key === "ArrowRight" || e.key === "ArrowLeft" || e.key === "Escape") {
         e.preventDefault();
         e.stopPropagation();
       }
@@ -419,7 +678,7 @@ export default function ScenesPage() {
     return () => window.removeEventListener("keydown", handleKey, true);
   }, [expandedImage, sceneImages]);
 
-  const getSceneImages = (sceneId: string) =>
+  const getSceneImagesForId = (sceneId: string) =>
     sceneImages.filter((img) => img.scene_id === sceneId);
 
   const getSettingName = (settingId: string): string => {
@@ -441,20 +700,19 @@ export default function ScenesPage() {
     const promptChanged =
       editedPrompts[scene.id] !== undefined &&
       editedPrompts[scene.id] !== scene.image_generation_prompt;
-    const charsChanged =
-      editedChars[scene.id] !== undefined &&
-      JSON.stringify(editedChars[scene.id]?.sort()) !==
-        JSON.stringify([...scene.characters].sort());
     const settingToggleChanged = includeSetting[scene.id] === false;
-    const setting = pipeline?.settings?.find(
-      (s) => s.id === scene.setting_id
-    );
+    const setting = pipeline?.settings?.find((s) => s.id === scene.setting_id);
     const settingPromptChanged =
       setting &&
       editedSettingPrompts[scene.id] !== undefined &&
       editedSettingPrompts[scene.id] !== setting.image_generation_prompt;
-    return promptChanged || charsChanged || settingToggleChanged || !!settingPromptChanged;
+    return promptChanged || settingToggleChanged || !!settingPromptChanged;
   };
+
+  const customSceneImages = sceneImages.filter((img) => {
+    const pipelineSceneIds = pipeline?.scenes?.map((s) => s.id) || [];
+    return !pipelineSceneIds.includes(img.scene_id);
+  });
 
   if (loading) {
     return (
@@ -468,19 +726,144 @@ export default function ScenesPage() {
     return (
       <div className="min-h-screen bg-ink flex items-center justify-center">
         <div className="text-center">
-          <p className="text-red-400/80 text-sm mb-4">
-            {error || "Pipeline not found"}
-          </p>
-          <Link
-            href="/history"
-            className="btn-primary px-6 py-3 rounded-xl text-sm"
-          >
+          <p className="text-red-400/80 text-sm mb-4">{error || "Pipeline not found"}</p>
+          <Link href="/history" className="btn-primary px-6 py-3 rounded-xl text-sm">
             {t("back_to_history")}
           </Link>
         </div>
       </div>
     );
   }
+
+  const renderCharPicker = (
+    isOpen: boolean,
+    expandedChar: string | null,
+    onClose: () => void,
+    onExpandChar: (charId: string | null) => void,
+    onSelectImage: (img: CharacterImage) => void,
+    excludeCharIds: string[] = []
+  ) => {
+    if (!isOpen) return null;
+    const availableGroups = Object.entries(charImageGroups).filter(
+      ([charId]) => !excludeCharIds.includes(charId)
+    );
+    if (availableGroups.length === 0) {
+      return (
+        <>
+          <div className="fixed inset-0 z-10" onClick={onClose} />
+          <div className="absolute top-full left-0 mt-1 bg-ink-soft border border-ink-muted rounded-lg shadow-xl z-20 min-w-[220px] p-3">
+            <p className="text-[10px] text-parchment/30 italic">{t("no_characters_available")}</p>
+          </div>
+        </>
+      );
+    }
+
+    return (
+      <>
+        <div className="fixed inset-0 z-10" onClick={onClose} />
+        <div className="absolute top-full left-0 mt-1 bg-ink-soft border border-ink-muted rounded-lg shadow-xl z-20 min-w-[260px] max-h-72 overflow-y-auto">
+          {!expandedChar ? (
+            <div className="py-1">
+              {availableGroups.map(([charId, imgs]) => (
+                <button
+                  key={charId}
+                  onClick={() => {
+                    if (imgs.length === 1) {
+                      onSelectImage(imgs[0]);
+                    } else {
+                      onExpandChar(charId);
+                    }
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-parchment/60 hover:bg-ink-muted/50 hover:text-parchment transition-colors text-left"
+                >
+                  <div className="w-8 h-10 rounded overflow-hidden border border-ink-muted shrink-0">
+                    <img src={imgs[0].image_url} alt={getCharName(charId)} className="w-full h-full object-cover" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="truncate font-medium">{getCharName(charId)}</p>
+                    <p className="text-[10px] text-parchment/30">
+                      {imgs.length} {imgs.length === 1 ? "image" : "images"}
+                    </p>
+                  </div>
+                  {imgs.length > 1 && (
+                    <ChevronRight size={12} className="text-parchment/20 shrink-0" />
+                  )}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div>
+              <button
+                onClick={() => onExpandChar(null)}
+                className="w-full flex items-center gap-1.5 px-3 py-2 text-[10px] text-parchment/40 hover:text-parchment/70 border-b border-ink-muted/50 transition-colors"
+              >
+                <ChevronLeft size={10} />
+                {getCharName(expandedChar)}
+              </button>
+              <div className="grid grid-cols-3 gap-1.5 p-2">
+                {charImageGroups[expandedChar]?.map((img) => (
+                  <button
+                    key={img.id}
+                    onClick={() => onSelectImage(img)}
+                    className="aspect-[3/4] rounded-lg overflow-hidden border border-ink-muted hover:border-emerald-400/50 transition-colors"
+                  >
+                    <img src={img.image_url} alt={img.name} className="w-full h-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </>
+    );
+  };
+
+  const renderScenePicker = (
+    isOpen: boolean,
+    onClose: () => void,
+    onSelect: (img: SceneImage) => void,
+    excludeSceneId?: string
+  ) => {
+    if (!isOpen) return null;
+    const available = sceneImages.filter(
+      (img) => !excludeSceneId || img.scene_id !== excludeSceneId
+    );
+    if (available.length === 0) {
+      return (
+        <>
+          <div className="fixed inset-0 z-10" onClick={onClose} />
+          <div className="absolute top-full left-0 mt-1 bg-ink-soft border border-ink-muted rounded-lg shadow-xl z-20 min-w-[220px] p-3">
+            <p className="text-[10px] text-parchment/30 italic">{t("no_scene_images_available")}</p>
+          </div>
+        </>
+      );
+    }
+
+    return (
+      <>
+        <div className="fixed inset-0 z-10" onClick={onClose} />
+        <div className="absolute top-full left-0 mt-1 bg-ink-soft border border-ink-muted rounded-lg shadow-xl z-20 min-w-[280px] max-h-72 overflow-y-auto py-1">
+          {available.map((img) => (
+            <button
+              key={img.id}
+              onClick={() => onSelect(img)}
+              className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-parchment/60 hover:bg-ink-muted/50 hover:text-parchment transition-colors text-left"
+            >
+              <div className="w-10 h-[71px] rounded overflow-hidden border border-ink-muted shrink-0">
+                <img src={img.image_url} alt={getSceneTitle(img.scene_id)} className="w-full h-full object-cover" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="truncate font-medium">{getSceneTitle(img.scene_id)}</p>
+                <p className="text-[10px] text-parchment/30 truncate">
+                  {ALL_MODELS.find((m) => m.id === img.model_used)?.label || img.model_used}
+                </p>
+              </div>
+            </button>
+          ))}
+        </div>
+      </>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-ink">
@@ -497,10 +880,7 @@ export default function ScenesPage() {
           <div className="flex items-center gap-3">
             <div className="film-strip">
               {[...Array(5)].map((_, i) => (
-                <span
-                  key={i}
-                  style={i === 2 ? { background: "#C8853A" } : {}}
-                />
+                <span key={i} style={i === 2 ? { background: "#C8853A" } : {}} />
               ))}
             </div>
             <div>
@@ -510,9 +890,7 @@ export default function ScenesPage() {
               >
                 Story<span className="text-amber-film italic">Pipeline</span>
               </Link>
-              <p className="text-xs text-parchment/30 -mt-0.5">
-                {t("brand_subtitle")}
-              </p>
+              <p className="text-xs text-parchment/30 -mt-0.5">{t("brand_subtitle")}</p>
             </div>
           </div>
           <div className="flex items-center gap-4">
@@ -574,47 +952,54 @@ export default function ScenesPage() {
             </p>
           </div>
 
-          <button
-            onClick={generateAllScenes}
-            disabled={generatingAll || !pipeline.scenes?.length}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-900/20 border border-emerald-800/30 text-emerald-400 hover:bg-emerald-900/30 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {generatingAll ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <Sparkles size={14} />
-            )}
-            <span>
-              {generatingAll
-                ? t("generating_all_scenes")
-                : t("generate_all_scenes")}
-            </span>
-          </button>
+          <div className="flex items-center gap-3 flex-wrap">
+            <button
+              onClick={() => setShowAddSceneModal(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm border border-emerald-800/30 text-emerald-400 hover:bg-emerald-900/10 transition-colors"
+            >
+              <Plus size={14} />
+              <span>{t("add_custom_scene")}</span>
+            </button>
+
+            <button
+              onClick={generateAllScenes}
+              disabled={generatingAll || !pipeline.scenes?.length}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-900/20 border border-emerald-800/30 text-emerald-400 hover:bg-emerald-900/30 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {generatingAll ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <Sparkles size={14} />
+              )}
+              <span>
+                {generatingAll ? t("generating_all_scenes") : t("generate_all_scenes")}
+              </span>
+            </button>
+          </div>
         </div>
 
         <div className="space-y-6">
           {pipeline.scenes?.map((scene) => {
-            const imgs = getSceneImages(scene.id);
+            const imgs = getSceneImagesForId(scene.id);
             const isGen = generating[scene.id];
-            const sceneChars = editedChars[scene.id] || scene.characters;
+            const isAiGen = generating[`ai_${scene.id}`];
             const scenePrompt =
               editedPrompts[scene.id] ?? scene.image_generation_prompt;
             const isEditing = editingPrompt[scene.id];
             const modified = isSceneModified(scene);
 
-            const allHavePortraits =
-              sceneChars.length > 0 &&
-              sceneChars.every((cId) => !!charPortraits[cId]);
-            const canGenerate = sceneChars.length > 0 && allHavePortraits;
-
-            const availableChars = allCharacters.filter(
-              (c) => !sceneChars.includes(c.id)
-            );
+            const charRefs = charRefsPerScene[scene.id] || [];
+            const sceneRefs = sceneRefsPerScene[scene.id] || [];
+            const totalRefs = charRefs.length + sceneRefs.length;
+            const availableModels = getSceneModels(totalRefs);
+            const currentModel = getActiveModel(scene.id);
 
             const activeCharNames = new Map<string, string>();
-            for (const cId of sceneChars) {
-              activeCharNames.set(cId, getCharName(cId));
+            for (const ref of charRefs) {
+              activeCharNames.set(ref.characterId, ref.name);
             }
+
+            const charRefsCharIds = charRefs.map((r) => r.characterId);
 
             return (
               <div
@@ -652,23 +1037,26 @@ export default function ScenesPage() {
                     </div>
                     <button
                       onClick={() => generateScene(scene)}
-                      disabled={isGen || !canGenerate}
-                      title={
-                        !canGenerate
-                          ? sceneChars.length === 0
-                            ? t("add_characters_first")
-                            : t("some_portraits_missing")
-                          : undefined
-                      }
-                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-emerald-900/20 border border-emerald-800/30 text-emerald-400 hover:bg-emerald-900/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                      disabled={isGen}
+                      className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0 ${
+                        totalRefs > 0
+                          ? "bg-violet-900/20 border border-violet-800/30 text-violet-400 hover:bg-violet-900/30"
+                          : "bg-emerald-900/20 border border-emerald-800/30 text-emerald-400 hover:bg-emerald-900/30"
+                      }`}
                     >
                       {isGen ? (
                         <Loader2 size={11} className="animate-spin" />
+                      ) : totalRefs > 0 ? (
+                        <ImageIcon size={11} />
                       ) : (
                         <Sparkles size={11} />
                       )}
                       <span>
-                        {isGen ? t("generating_scene") : t("generate_scene")}
+                        {isGen
+                          ? t("generating_scene")
+                          : totalRefs > 0
+                            ? t("generate_scene_i2i")
+                            : t("generate_scene")}
                       </span>
                     </button>
                   </div>
@@ -680,116 +1068,133 @@ export default function ScenesPage() {
 
                 {/* Scene content */}
                 <div className="p-6 space-y-4">
-                  {/* Characters in scene */}
+                  {/* References section */}
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-[10px] text-parchment/30 uppercase tracking-wider font-semibold">
-                        {t("scene_characters")}
+                        {t("scene_references")}
                       </span>
-                      {!allHavePortraits && sceneChars.length > 0 && (
-                        <span className="flex items-center gap-1 text-[10px] text-amber-400">
-                          <AlertCircle size={10} />
-                          {t("some_portraits_missing")}
-                        </span>
-                      )}
-                      {allHavePortraits && sceneChars.length > 0 && (
-                        <span className="flex items-center gap-1 text-[10px] text-emerald-400">
-                          <CheckCircle2 size={10} />
-                          {t("all_portraits_ready")}
-                        </span>
-                      )}
+                      <span className="text-[10px] text-parchment/20">
+                        {totalRefs} ref(s) — {totalRefs === 0 ? "Text-to-Image" : "Image-to-Image"}
+                      </span>
                     </div>
 
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {sceneChars.map((charId) => {
-                        const portrait = charPortraits[charId];
-                        return (
-                          <div
-                            key={charId}
-                            className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-xs transition-colors ${
-                              portrait
-                                ? "bg-emerald-900/10 border-emerald-800/30 text-emerald-300"
-                                : "bg-ink/40 border-ink-muted text-parchment/50"
-                            }`}
+                    <div className="flex items-end gap-2 flex-wrap">
+                      {charRefs.map((ref) => (
+                        <div key={ref.imageDbId} className="relative">
+                          <div className="w-12 h-16 rounded-lg overflow-hidden border-2 border-emerald-800/30">
+                            <img
+                              src={ref.imageUrl}
+                              alt={ref.name}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                          <button
+                            onClick={() => removeCharRefFromScene(scene.id, ref.imageDbId)}
+                            className="absolute -top-1.5 -right-1.5 p-0.5 rounded-full bg-red-900/80 border border-red-800/50 text-red-300 hover:text-red-200 transition-colors"
                           >
-                            {portrait ? (
-                              <div className="w-5 h-5 rounded-full overflow-hidden border border-emerald-400/50">
-                                <img
-                                  src={portrait}
-                                  alt={getCharName(charId)}
-                                  className="w-full h-full object-cover"
-                                />
-                              </div>
-                            ) : (
-                              <div className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-mono bg-ink-muted text-parchment/40">
-                                {charId.replace("char_", "")}
-                              </div>
-                            )}
-                            <span>{getCharName(charId)}</span>
-                            {!portrait && (
-                              <AlertCircle
-                                size={10}
-                                className="text-amber-400/60"
-                              />
-                            )}
-                            <button
-                              onClick={() =>
-                                removeCharFromScene(scene.id, charId)
-                              }
-                              className="ml-0.5 p-0.5 rounded hover:bg-red-900/30 text-parchment/30 hover:text-red-400 transition-colors"
-                            >
-                              <X size={10} />
-                            </button>
-                          </div>
-                        );
-                      })}
-
-                      {/* Add character dropdown */}
-                      {availableChars.length > 0 && (
-                        <div className="relative group">
-                          <button className="flex items-center gap-1 px-2 py-1 rounded-lg border border-dashed border-ink-muted text-[10px] text-parchment/30 hover:text-parchment/60 hover:border-parchment/30 transition-colors">
-                            <Plus size={10} />
-                            {t("add_character")}
+                            <X size={8} />
                           </button>
-                          <div className="absolute top-full left-0 mt-1 bg-ink-soft border border-ink-muted rounded-lg shadow-xl z-10 min-w-[180px] py-1 hidden group-hover:block">
-                            {availableChars.map((char) => (
-                                <button
-                                  key={char.id}
-                                  onClick={() =>
-                                    addCharToScene(scene.id, char.id)
-                                  }
-                                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-parchment/60 hover:bg-ink-muted/50 hover:text-parchment transition-colors text-left"
-                                >
-                                  {charPortraits[char.id] ? (
-                                    <div className="w-5 h-5 rounded-full overflow-hidden border border-ink-muted shrink-0">
-                                      <img
-                                        src={charPortraits[char.id]}
-                                        alt={char.name}
-                                        className="w-full h-full object-cover"
-                                      />
-                                    </div>
-                                  ) : (
-                                    <div className="w-5 h-5 rounded-full bg-ink-muted flex items-center justify-center text-[8px] font-mono text-parchment/40 shrink-0">
-                                      {char.id.replace("char_", "")}
-                                    </div>
-                                  )}
-                                  <span className="flex-1">{char.name}</span>
-                                  {charPortraits[char.id] ? (
-                                    <CheckCircle2
-                                      size={10}
-                                      className="text-emerald-400 shrink-0"
-                                    />
-                                  ) : (
-                                    <AlertCircle
-                                      size={10}
-                                      className="text-amber-400/60 shrink-0"
-                                    />
-                                  )}
-                                </button>
-                              ))}
-                          </div>
+                          <p className="text-[8px] text-parchment/30 truncate w-12 mt-0.5 text-center">
+                            {ref.name}
+                          </p>
                         </div>
-                      )}
+                      ))}
+
+                      {sceneRefs.map((ref) => (
+                        <div key={ref.imageDbId} className="relative">
+                          <div className="w-[34px] h-16 rounded-lg overflow-hidden border-2 border-violet-800/30">
+                            <img
+                              src={ref.imageUrl}
+                              alt={ref.title}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                          <button
+                            onClick={() => removeSceneRefFromScene(scene.id, ref.imageDbId)}
+                            className="absolute -top-1.5 -right-1.5 p-0.5 rounded-full bg-red-900/80 border border-red-800/50 text-red-300 hover:text-red-200 transition-colors"
+                          >
+                            <X size={8} />
+                          </button>
+                          <p className="text-[8px] text-parchment/30 truncate w-[34px] mt-0.5 text-center">
+                            {ref.title}
+                          </p>
+                        </div>
+                      ))}
+
+                      {/* Add Character picker */}
+                      <div className="relative">
+                        <button
+                          onClick={() => {
+                            setCharPickerOpen((prev) => (prev === scene.id ? null : scene.id));
+                            setCharPickerExpanded(null);
+                            setScenePickerOpen(null);
+                          }}
+                          className="flex items-center gap-1 px-2 py-1.5 rounded-lg border border-dashed border-ink-muted text-[10px] text-parchment/30 hover:text-parchment/60 hover:border-emerald-400/30 transition-colors"
+                        >
+                          <Users size={10} />
+                          {t("add_character")}
+                        </button>
+                        {renderCharPicker(
+                          charPickerOpen === scene.id,
+                          charPickerExpanded,
+                          () => { setCharPickerOpen(null); setCharPickerExpanded(null); },
+                          setCharPickerExpanded,
+                          (img) => addCharRefToScene(scene.id, img),
+                          charRefsCharIds
+                        )}
+                      </div>
+
+                      {/* Add Scene Ref picker */}
+                      <div className="relative">
+                        <button
+                          onClick={() => {
+                            setScenePickerOpen((prev) => (prev === scene.id ? null : scene.id));
+                            setCharPickerOpen(null);
+                          }}
+                          className="flex items-center gap-1 px-2 py-1.5 rounded-lg border border-dashed border-ink-muted text-[10px] text-parchment/30 hover:text-parchment/60 hover:border-violet-400/30 transition-colors"
+                        >
+                          <Film size={10} />
+                          {t("add_scene_ref")}
+                        </button>
+                        {renderScenePicker(
+                          scenePickerOpen === scene.id,
+                          () => setScenePickerOpen(null),
+                          (img) => addSceneRefToScene(scene.id, img),
+                          scene.id
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Model selector */}
+                  <div>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <span className="text-[10px] text-parchment/30 uppercase tracking-wider font-semibold">
+                        {t("model_label")}
+                      </span>
+                      <span className="text-[10px] text-parchment/20">
+                        — {totalRefs === 0 ? "Text-to-Image" : "Image-to-Image"}
+                      </span>
+                    </div>
+                    <div className="relative">
+                      <select
+                        value={currentModel}
+                        onChange={(e) =>
+                          setSceneModels((prev) => ({ ...prev, [scene.id]: e.target.value }))
+                        }
+                        className="w-full appearance-none bg-ink/60 border border-ink-muted rounded-lg px-3 py-2 pr-8 text-[11px] text-parchment/70 focus:outline-none focus:border-amber-film/50 cursor-pointer"
+                      >
+                        {availableModels.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.label} ({m.pricing}) — {m.description}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown
+                        size={12}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-parchment/30 pointer-events-none"
+                      />
                     </div>
                   </div>
 
@@ -801,8 +1206,7 @@ export default function ScenesPage() {
                     const isSettingCollapsed = settingCollapsed[scene.id];
                     const isSettingEditing = editingSettingPrompt[scene.id];
                     const settingPromptText =
-                      editedSettingPrompts[scene.id] ??
-                      setting.image_generation_prompt;
+                      editedSettingPrompts[scene.id] ?? setting.image_generation_prompt;
                     const settingPromptModified =
                       settingPromptText !== setting.image_generation_prompt;
 
@@ -836,8 +1240,7 @@ export default function ScenesPage() {
                                   onClick={() => {
                                     setEditedSettingPrompts((prev) => ({
                                       ...prev,
-                                      [scene.id]:
-                                        setting.image_generation_prompt,
+                                      [scene.id]: setting.image_generation_prompt,
                                     }));
                                     setEditingSettingPrompt((prev) => ({
                                       ...prev,
@@ -922,6 +1325,18 @@ export default function ScenesPage() {
                         {t("prompt_used")}
                       </span>
                       <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => handleSceneAiHelp(scene.id)}
+                          disabled={isAiGen}
+                          className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-lg bg-violet-900/20 border border-violet-800/30 text-violet-400 hover:bg-violet-900/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {isAiGen ? (
+                            <Loader2 size={10} className="animate-spin" />
+                          ) : (
+                            <Wand2 size={10} />
+                          )}
+                          {isAiGen ? t("ai_help_generating") : t("ai_help")}
+                        </button>
                         {modified && (
                           <button
                             onClick={() => resetScene(scene.id)}
@@ -953,7 +1368,10 @@ export default function ScenesPage() {
                       <textarea
                         value={scenePrompt}
                         onChange={(e) =>
-                          handlePromptChange(scene.id, e.target.value)
+                          setEditedPrompts((prev) => ({
+                            ...prev,
+                            [scene.id]: e.target.value,
+                          }))
                         }
                         rows={4}
                         autoFocus
@@ -971,12 +1389,12 @@ export default function ScenesPage() {
 
                   {/* Generated scene images */}
                   {imgs.length > 0 ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
                       {imgs.map((img) => (
                         <div key={img.id} className="group relative">
                           <button
                             onClick={() => setExpandedImage(img.id)}
-                            className="w-full aspect-video rounded-lg overflow-hidden border border-ink-muted hover:border-emerald-400/40 transition-all"
+                            className="w-full aspect-[9/16] rounded-lg overflow-hidden border border-ink-muted hover:border-emerald-400/40 transition-all"
                           >
                             <img
                               src={img.image_url}
@@ -991,12 +1409,10 @@ export default function ScenesPage() {
                             <Trash2 size={12} />
                           </button>
                           <p className="text-[10px] text-parchment/30 mt-1 truncate">
-                            {img.model_used}
+                            {ALL_MODELS.find((m) => m.id === img.model_used)?.label || img.model_used}
                             {img.loras_used?.character_refs
                               ? ` + ${img.loras_used.character_refs.length} ref(s)`
-                              : img.loras_used?.loras
-                                ? ` + ${img.loras_used.loras.length} LoRA(s)`
-                                : ""}
+                              : ""}
                           </p>
                         </div>
                       ))}
@@ -1011,6 +1427,46 @@ export default function ScenesPage() {
             );
           })}
         </div>
+
+        {/* Custom Scenes section */}
+        {customSceneImages.length > 0 && (
+          <div className="mt-12">
+            <div className="flex items-center gap-3 mb-6">
+              <Plus size={18} className="text-emerald-400" />
+              <h2 className="font-display text-2xl font-bold text-parchment">
+                {t("custom_scenes")}
+              </h2>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+              {customSceneImages.map((img) => (
+                <div key={img.id} className="group relative">
+                  <button
+                    onClick={() => setExpandedImage(img.id)}
+                    className="w-full aspect-[9/16] rounded-lg overflow-hidden border-2 border-ink-muted hover:border-emerald-400/40 transition-all"
+                  >
+                    <img
+                      src={img.image_url}
+                      alt={img.scene_id}
+                      className="w-full h-full object-cover"
+                    />
+                  </button>
+                  <button
+                    onClick={() => deleteSceneImage(img.id)}
+                    className="absolute top-1.5 right-1.5 p-1 rounded-md bg-ink/80 text-red-400/70 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                  <p className="text-xs text-parchment/60 mt-1.5 truncate font-semibold">
+                    {img.scene_id}
+                  </p>
+                  <p className="text-[10px] text-parchment/30 truncate">
+                    {ALL_MODELS.find((m) => m.id === img.model_used)?.label || img.model_used}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </main>
 
       {/* Expanded image overlay */}
@@ -1019,9 +1475,7 @@ export default function ScenesPage() {
           const img = sceneImages.find((i) => i.id === expandedImage);
           if (!img) return null;
           const scene = pipeline?.scenes?.find((s) => s.id === img.scene_id);
-          const currentIdx = sceneImages.findIndex(
-            (i) => i.id === expandedImage
-          );
+          const currentIdx = sceneImages.findIndex((i) => i.id === expandedImage);
           const hasPrev = currentIdx > 0;
           const hasNext = currentIdx < sceneImages.length - 1;
 
@@ -1076,16 +1530,11 @@ export default function ScenesPage() {
                     {scene?.title || img.scene_id}
                   </p>
                   <p className="text-parchment/30 text-xs mt-1">
-                    {img.model_used}
+                    {ALL_MODELS.find((m) => m.id === img.model_used)?.label || img.model_used}
                     {img.loras_used?.character_refs
                       ? ` + ${img.loras_used.character_refs.map((r) => r.name).join(", ")}`
-                      : img.loras_used?.trigger_map
-                        ? ` + ${Object.values(img.loras_used.trigger_map).join(", ")}`
-                        : img.loras_used?.trigger_words
-                          ? ` + ${img.loras_used.trigger_words.join(", ")}`
-                          : ""}
-                    {img.width && img.height &&
-                      ` · ${img.width}x${img.height}`}
+                      : ""}
+                    {img.width && img.height && ` · ${img.width}x${img.height}`}
                   </p>
                   <p className="text-parchment/20 text-[10px] mt-1 font-mono">
                     {currentIdx + 1} / {sceneImages.length}
@@ -1102,6 +1551,251 @@ export default function ScenesPage() {
             </div>
           );
         })()}
+
+      {/* Add Custom Scene Modal */}
+      {showAddSceneModal && (
+        <div
+          className="fixed inset-0 bg-ink/90 z-50 flex items-center justify-center p-4 outline-none"
+          onClick={() => !generatingCustomScene && setShowAddSceneModal(false)}
+        >
+          <div
+            className="bg-ink-soft border border-ink-muted rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b border-ink-muted/50">
+              <h3 className="font-display text-xl font-semibold text-parchment">
+                {t("add_custom_scene_title")}
+              </h3>
+              <button
+                onClick={() => !generatingCustomScene && setShowAddSceneModal(false)}
+                className="p-1.5 rounded-lg text-parchment/40 hover:text-parchment transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-5">
+              {/* Title */}
+              <div>
+                <label className="text-[10px] text-parchment/30 uppercase tracking-wider font-semibold block mb-1.5">
+                  {t("scene_title_label")} *
+                </label>
+                <input
+                  type="text"
+                  value={newSceneTitle}
+                  onChange={(e) => setNewSceneTitle(e.target.value)}
+                  placeholder={t("scene_title_placeholder")}
+                  className="w-full bg-ink/60 border border-ink-muted rounded-lg px-3 py-2.5 text-sm text-parchment/80 placeholder:text-parchment/20 focus:outline-none focus:border-amber-film/50 transition-colors"
+                />
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="text-[10px] text-parchment/30 uppercase tracking-wider font-semibold block mb-1.5">
+                  {t("scene_description_label")}
+                </label>
+                <textarea
+                  value={newSceneDesc}
+                  onChange={(e) => setNewSceneDesc(e.target.value)}
+                  placeholder={t("scene_description_placeholder")}
+                  rows={2}
+                  className="w-full bg-ink/60 border border-ink-muted rounded-lg px-3 py-2.5 text-sm text-parchment/80 placeholder:text-parchment/20 focus:outline-none focus:border-amber-film/50 transition-colors resize-none"
+                />
+              </div>
+
+              {/* References */}
+              <div>
+                <label className="text-[10px] text-parchment/30 uppercase tracking-wider font-semibold block mb-1.5">
+                  {t("scene_references")}
+                </label>
+                <div className="flex items-end gap-2 flex-wrap">
+                  {customCharRefs.map((ref) => (
+                    <div key={ref.imageDbId} className="relative">
+                      <div className="w-12 h-16 rounded-lg overflow-hidden border-2 border-emerald-800/30">
+                        <img src={ref.imageUrl} alt={ref.name} className="w-full h-full object-cover" />
+                      </div>
+                      <button
+                        onClick={() =>
+                          setCustomCharRefs((prev) => prev.filter((r) => r.imageDbId !== ref.imageDbId))
+                        }
+                        className="absolute -top-1.5 -right-1.5 p-0.5 rounded-full bg-red-900/80 border border-red-800/50 text-red-300 hover:text-red-200 transition-colors"
+                      >
+                        <X size={8} />
+                      </button>
+                      <p className="text-[8px] text-parchment/30 truncate w-12 mt-0.5 text-center">
+                        {ref.name}
+                      </p>
+                    </div>
+                  ))}
+
+                  {customSceneRefs.map((ref) => (
+                    <div key={ref.imageDbId} className="relative">
+                      <div className="w-[34px] h-16 rounded-lg overflow-hidden border-2 border-violet-800/30">
+                        <img src={ref.imageUrl} alt={ref.title} className="w-full h-full object-cover" />
+                      </div>
+                      <button
+                        onClick={() =>
+                          setCustomSceneRefs((prev) => prev.filter((r) => r.imageDbId !== ref.imageDbId))
+                        }
+                        className="absolute -top-1.5 -right-1.5 p-0.5 rounded-full bg-red-900/80 border border-red-800/50 text-red-300 hover:text-red-200 transition-colors"
+                      >
+                        <X size={8} />
+                      </button>
+                      <p className="text-[8px] text-parchment/30 truncate w-[34px] mt-0.5 text-center">
+                        {ref.title}
+                      </p>
+                    </div>
+                  ))}
+
+                  <div className="relative">
+                    <button
+                      onClick={() => {
+                        setCustomCharPickerOpen((prev) => !prev);
+                        setCustomCharPickerExpanded(null);
+                        setCustomScenePickerOpen(false);
+                      }}
+                      className="flex items-center gap-1 px-2 py-1.5 rounded-lg border border-dashed border-ink-muted text-[10px] text-parchment/30 hover:text-parchment/60 hover:border-emerald-400/30 transition-colors"
+                    >
+                      <Users size={10} />
+                      {t("add_character")}
+                    </button>
+                    {renderCharPicker(
+                      customCharPickerOpen,
+                      customCharPickerExpanded,
+                      () => { setCustomCharPickerOpen(false); setCustomCharPickerExpanded(null); },
+                      setCustomCharPickerExpanded,
+                      (img) => {
+                        setCustomCharRefs((prev) => {
+                          const replaced = prev.filter((r) => r.characterId !== img.character_id);
+                          return [
+                            ...replaced,
+                            {
+                              characterId: img.character_id,
+                              name: img.name,
+                              imageUrl: img.image_url,
+                              imageDbId: img.id,
+                            },
+                          ];
+                        });
+                        setCustomCharPickerOpen(false);
+                        setCustomCharPickerExpanded(null);
+                      },
+                      customCharRefs.map((r) => r.characterId)
+                    )}
+                  </div>
+
+                  <div className="relative">
+                    <button
+                      onClick={() => {
+                        setCustomScenePickerOpen((prev) => !prev);
+                        setCustomCharPickerOpen(false);
+                      }}
+                      className="flex items-center gap-1 px-2 py-1.5 rounded-lg border border-dashed border-ink-muted text-[10px] text-parchment/30 hover:text-parchment/60 hover:border-violet-400/30 transition-colors"
+                    >
+                      <Film size={10} />
+                      {t("add_scene_ref")}
+                    </button>
+                    {renderScenePicker(
+                      customScenePickerOpen,
+                      () => setCustomScenePickerOpen(false),
+                      (img) => {
+                        setCustomSceneRefs((prev) => {
+                          if (prev.some((r) => r.imageDbId === img.id)) return prev;
+                          return [
+                            ...prev,
+                            {
+                              fromSceneId: img.scene_id,
+                              title: getSceneTitle(img.scene_id),
+                              imageUrl: img.image_url,
+                              imageDbId: img.id,
+                            },
+                          ];
+                        });
+                        setCustomScenePickerOpen(false);
+                      }
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Model selector */}
+              <div>
+                <label className="text-[10px] text-parchment/30 uppercase tracking-wider font-semibold block mb-1.5">
+                  {t("model_label")} — {customRefCount === 0 ? "Text-to-Image" : "Image-to-Image"}
+                </label>
+                <div className="relative">
+                  <select
+                    value={customModel}
+                    onChange={(e) => setCustomModel(e.target.value)}
+                    className="w-full appearance-none bg-ink/60 border border-ink-muted rounded-lg px-3 py-2.5 pr-8 text-xs text-parchment/70 focus:outline-none focus:border-amber-film/50 cursor-pointer"
+                  >
+                    {customAvailableModels.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.label} ({m.pricing}) — {m.description}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown
+                    size={12}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-parchment/30 pointer-events-none"
+                  />
+                </div>
+              </div>
+
+              {/* Prompt with AI Help */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-[10px] text-parchment/30 uppercase tracking-wider font-semibold">
+                    {t("prompt_used")} *
+                  </label>
+                  <button
+                    onClick={handleCustomSceneAiHelp}
+                    disabled={sceneAiHelpLoading}
+                    className="flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-lg bg-violet-900/20 border border-violet-800/30 text-violet-400 hover:bg-violet-900/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {sceneAiHelpLoading ? (
+                      <Loader2 size={11} className="animate-spin" />
+                    ) : (
+                      <Wand2 size={11} />
+                    )}
+                    <span>{sceneAiHelpLoading ? t("ai_help_generating") : t("ai_help")}</span>
+                  </button>
+                </div>
+                <textarea
+                  value={newScenePrompt}
+                  onChange={(e) => setNewScenePrompt(e.target.value)}
+                  placeholder={t("scene_prompt_placeholder")}
+                  rows={4}
+                  className="w-full bg-ink/60 border border-ink-muted rounded-lg px-3 py-2.5 text-[11px] text-parchment/70 font-mono leading-relaxed placeholder:text-parchment/20 focus:outline-none focus:border-amber-film/50 transition-colors resize-y"
+                />
+              </div>
+            </div>
+
+            {/* Modal footer */}
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-ink-muted/50">
+              <button
+                onClick={() => !generatingCustomScene && setShowAddSceneModal(false)}
+                disabled={generatingCustomScene}
+                className="px-4 py-2 rounded-lg text-sm text-parchment/50 hover:text-parchment/70 transition-colors disabled:opacity-50"
+              >
+                {t("cancel")}
+              </button>
+              <button
+                onClick={handleGenerateCustomScene}
+                disabled={generatingCustomScene || !newSceneTitle.trim() || !newScenePrompt.trim()}
+                className="flex items-center gap-2 px-5 py-2 rounded-xl bg-emerald-900/20 border border-emerald-800/30 text-emerald-400 hover:bg-emerald-900/30 text-sm disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {generatingCustomScene ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <ImageIcon size={14} />
+                )}
+                <span>{generatingCustomScene ? t("generating") : t("generate_scene")}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <footer className="border-t border-ink-muted/30 mt-20 py-6">
         <div className="max-w-7xl mx-auto px-6 flex items-center justify-between text-xs text-parchment/20">

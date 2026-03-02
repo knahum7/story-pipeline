@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fal } from "@fal-ai/client";
 import { getSupabase } from "@/lib/supabase";
-import { FAL_MODELS } from "@/lib/fal-models";
+import { ALL_MODELS } from "@/lib/fal-models";
 
 fal.config({ credentials: () => process.env.FAL_KEY || "" });
 
@@ -24,7 +24,7 @@ interface FalSubscribeResult {
 
 export async function POST(req: NextRequest) {
   try {
-    const { pipelineId, characterId, name, prompt, model } =
+    const { pipelineId, characterId, name, prompt, model, referenceImageBase64, referenceContentType } =
       await req.json();
 
     if (!pipelineId || !characterId || !name || !prompt || !model) {
@@ -34,7 +34,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!FAL_MODELS.some((m) => m.id === model)) {
+    const modelConfig = ALL_MODELS.find((m) => m.id === model);
+    if (!modelConfig) {
       return NextResponse.json(
         { error: `Unknown model: ${model}` },
         { status: 400 }
@@ -48,18 +49,58 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const supabase = getSupabase();
     const startTime = Date.now();
     console.log(
-      `[characters] Generating portrait for "${name}" (${characterId}) with ${model}`
+      `[characters] Generating portrait for "${name}" (${characterId}) with ${model}${referenceImageBase64 ? " + reference" : ""}`
     );
 
-    const result = (await fal.subscribe(model, {
-      input: {
-        prompt,
-        image_size: "portrait_4_3",
-        num_images: 1,
-      },
-    })) as FalSubscribeResult;
+    let referenceUrl: string | null = null;
+    if (referenceImageBase64 && modelConfig.type === "image-to-image") {
+      const refExt = (referenceContentType || "image/png").includes("jpeg") ? "jpg"
+        : (referenceContentType || "image/png").includes("webp") ? "webp" : "png";
+      const refPath = `${pipelineId}/${characterId}/ref-${Date.now()}.${refExt}`;
+      const refBuffer = Buffer.from(referenceImageBase64, "base64");
+
+      const { error: refUploadError } = await supabase.storage
+        .from("characters")
+        .upload(refPath, refBuffer, {
+          contentType: referenceContentType || "image/png",
+          upsert: false,
+        });
+
+      if (refUploadError) {
+        console.error("[characters] Ref image upload error:", refUploadError.message);
+        return NextResponse.json(
+          { error: `Reference upload failed: ${refUploadError.message}` },
+          { status: 500 }
+        );
+      }
+
+      const { data: refPublicUrl } = supabase.storage
+        .from("characters")
+        .getPublicUrl(refPath);
+      referenceUrl = refPublicUrl.publicUrl;
+    }
+
+    const sizeParams = modelConfig.portraitInput ?? { image_size: "portrait_4_3" };
+
+    const input: Record<string, unknown> = {
+      prompt,
+      ...sizeParams,
+      num_images: 1,
+    };
+
+    if (referenceUrl && modelConfig.referenceFormat) {
+      if (modelConfig.referenceFormat === "single") {
+        input.image_url = referenceUrl;
+      } else {
+        input.image_urls = [referenceUrl];
+      }
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = (await (fal as any).subscribe(model, { input })) as FalSubscribeResult;
 
     console.log(
       `[characters] fal.ai response keys: ${Object.keys(result).join(", ")}`,
@@ -99,7 +140,6 @@ export async function POST(req: NextRequest) {
 
     const storagePath = `${pipelineId}/${characterId}/portrait-${Date.now()}.${ext}`;
 
-    const supabase = getSupabase();
     const { error: uploadError } = await supabase.storage
       .from("characters")
       .upload(storagePath, imageBuffer, {

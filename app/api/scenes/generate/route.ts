@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fal } from "@fal-ai/client";
 import { getSupabase } from "@/lib/supabase";
+import { ALL_MODELS, getSceneInput } from "@/lib/fal-models";
 
 fal.config({ credentials: () => process.env.FAL_KEY || "" });
 
@@ -20,12 +21,27 @@ interface FalResult {
 
 export async function POST(req: NextRequest) {
   try {
-    const { pipelineId, sceneId, prompt, characterIds, settingPrompt } =
-      await req.json();
+    const {
+      pipelineId,
+      sceneId,
+      prompt,
+      model,
+      referenceUrls,
+      settingPrompt,
+      characterNames,
+    } = await req.json();
 
-    if (!pipelineId || !sceneId || !prompt) {
+    if (!pipelineId || !sceneId || !prompt || !model) {
       return NextResponse.json(
-        { error: "Missing required fields: pipelineId, sceneId, prompt" },
+        { error: "Missing required fields: pipelineId, sceneId, prompt, model" },
+        { status: 400 }
+      );
+    }
+
+    const modelConfig = ALL_MODELS.find((m) => m.id === model);
+    if (!modelConfig) {
+      return NextResponse.json(
+        { error: `Unknown model: ${model}` },
         { status: 400 }
       );
     }
@@ -40,49 +56,30 @@ export async function POST(req: NextRequest) {
     const supabase = getSupabase();
     const startTime = Date.now();
 
-    const charIds: string[] = characterIds || [];
-    const portraitUrls: string[] = [];
-    const characterRefs: { character_id: string; name: string; image_url: string }[] = [];
-
-    if (charIds.length > 0) {
-      const { data: charRows } = await supabase
-        .from("characters")
-        .select("character_id, name, image_url")
-        .eq("pipeline_id", pipelineId)
-        .in("character_id", charIds)
-        .order("created_at", { ascending: false });
-
-      const seen = new Set<string>();
-      for (const row of charRows || []) {
-        if (seen.has(row.character_id)) continue;
-        seen.add(row.character_id);
-        portraitUrls.push(row.image_url);
-        characterRefs.push({
-          character_id: row.character_id,
-          name: row.name,
-          image_url: row.image_url,
-        });
-      }
-    }
-
+    const refs: string[] = referenceUrls || [];
     const finalPrompt = [settingPrompt || "", prompt]
       .filter(Boolean)
       .join(" ");
 
-    const model = "fal-ai/nano-banana-2/edit";
-
     console.log(
-      `[scenes] Generating ${sceneId} with ${model}, ${portraitUrls.length} ref image(s)${settingPrompt ? ", +setting" : ""}, prompt: ${finalPrompt.slice(0, 150)}...`
+      `[scenes] Generating ${sceneId} with ${model}, ${refs.length} ref(s)${settingPrompt ? ", +setting" : ""}, prompt: ${finalPrompt.slice(0, 150)}...`
     );
 
+    const sizeParams = getSceneInput(modelConfig);
     const input: Record<string, unknown> = {
       prompt: finalPrompt,
-      image_urls: portraitUrls,
-      aspect_ratio: "16:9",
+      ...sizeParams,
       num_images: 1,
       output_format: "png",
-      resolution: "1K",
     };
+
+    if (refs.length > 0 && modelConfig.referenceFormat) {
+      if (modelConfig.referenceFormat === "single") {
+        input.image_url = refs[0];
+      } else {
+        input.image_urls = refs;
+      }
+    }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = (await (fal as any).subscribe(model, { input })) as FalResult;
@@ -142,6 +139,17 @@ export async function POST(req: NextRequest) {
       .from("scenes")
       .getPublicUrl(storagePath);
 
+    const names: string[] = characterNames || [];
+    const refMeta =
+      refs.length > 0
+        ? {
+            character_refs: refs.map((url: string, i: number) => ({
+              name: names[i] || `ref_${i + 1}`,
+              image_url: url,
+            })),
+          }
+        : null;
+
     const { data: row, error: dbError } = await supabase
       .from("scene_images")
       .insert({
@@ -149,7 +157,7 @@ export async function POST(req: NextRequest) {
         scene_id: sceneId,
         prompt: finalPrompt,
         model_used: model,
-        loras_used: characterRefs.length > 0 ? { character_refs: characterRefs } : null,
+        loras_used: refMeta,
         image_url: publicUrlData.publicUrl,
         width: imageWidth,
         height: imageHeight,

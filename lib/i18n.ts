@@ -179,6 +179,28 @@ const translations: Record<string, TranslationEntry> = {
 
   needs_portrait: { en: "Generate a portrait first", tr: "Önce bir portre oluşturun" },
 
+  // Add Character modal
+  add_new_character: { en: "+ Add Character", tr: "+ Karakter Ekle" },
+  add_character_title: { en: "Add New Character", tr: "Yeni Karakter Ekle" },
+  character_name: { en: "Character Name", tr: "Karakter Adı" },
+  character_name_placeholder: { en: "e.g. Captain Morgan", tr: "ör. Kaptan Morgan" },
+  character_description: { en: "Description (for AI prompt help)", tr: "Açıklama (AI komut yardımı için)" },
+  character_description_placeholder: { en: "e.g. A grizzled old sailor with a wooden leg and a parrot on his shoulder", tr: "ör. Tahta bacaklı, omzunda papağanı olan tecrübeli yaşlı bir denizci" },
+  reference_image: { en: "Reference Image (optional)", tr: "Referans Görsel (isteğe bağlı)" },
+  drop_reference: { en: "Drop an image here or click to browse", tr: "Bir görsel sürükleyin veya göz atmak için tıklayın" },
+  drop_reference_formats: { en: "JPEG, PNG, WebP supported", tr: "JPEG, PNG, WebP desteklenir" },
+  remove_reference: { en: "Remove", tr: "Kaldır" },
+  ai_help: { en: "AI Help", tr: "AI Yardım" },
+  ai_help_generating: { en: "Generating...", tr: "Oluşturuluyor..." },
+  ai_help_overwrite: { en: "Replace current prompt with AI suggestion?", tr: "Mevcut komut AI önerisiyle değiştirilsin mi?" },
+  prompt_placeholder: { en: "Describe the character portrait you want to generate...", tr: "Oluşturmak istediğiniz karakter portresini açıklayın..." },
+  name_required: { en: "Character name is required", tr: "Karakter adı gerekli" },
+  prompt_required: { en: "A prompt is required to generate", tr: "Oluşturmak için komut gerekli" },
+  add_reference_image: { en: "Add reference image for I2I generation (drag & drop or click)", tr: "I2I oluşturma için referans görsel ekle (sürükle-bırak veya tıkla)" },
+  custom_characters: { en: "Custom Characters", tr: "Özel Karakterler" },
+  cancel: { en: "Cancel", tr: "İptal" },
+  create_and_generate: { en: "Generate Portrait", tr: "Portre Oluştur" },
+
   // Scenes page
   scenes_title: { en: "Scene Generation", tr: "Sahne Oluşturma" },
   scenes_desc: { en: "Generate scene images with character portraits", tr: "Karakter portreleri ile sahne görselleri oluşturun" },
@@ -202,6 +224,19 @@ const translations: Record<string, TranslationEntry> = {
   include_setting: { en: "Include Setting", tr: "Mekan Dahil Et" },
   setting_prompt: { en: "Setting Prompt", tr: "Mekan Komut Metni" },
   setting_excluded: { en: "Setting excluded from prompt", tr: "Mekan komuttan hariç" },
+  scene_references: { en: "References", tr: "Referanslar" },
+  add_scene_ref: { en: "Add Scene", tr: "Sahne Ekle" },
+  generate_scene_i2i: { en: "I2I Generate", tr: "I2I Oluştur" },
+  no_characters_available: { en: "No characters with images available", tr: "Görseli olan karakter bulunamadı" },
+  no_scene_images_available: { en: "No scene images available", tr: "Sahne görseli bulunamadı" },
+  add_custom_scene: { en: "+ Add Scene", tr: "+ Sahne Ekle" },
+  add_custom_scene_title: { en: "Add New Scene", tr: "Yeni Sahne Ekle" },
+  custom_scenes: { en: "Custom Scenes", tr: "Özel Sahneler" },
+  scene_title_label: { en: "Scene Title", tr: "Sahne Başlığı" },
+  scene_title_placeholder: { en: "e.g. The Final Confrontation", tr: "ör. Son Karşılaşma" },
+  scene_description_label: { en: "Description (for AI prompt help)", tr: "Açıklama (AI komut yardımı için)" },
+  scene_description_placeholder: { en: "e.g. Two characters face off in a dark alley under rain", tr: "ör. İki karakter yağmur altında karanlık bir sokakta karşı karşıya" },
+  scene_prompt_placeholder: { en: "Describe the scene you want to generate...", tr: "Oluşturmak istediğiniz sahneyi açıklayın..." },
 
   // Dynamic (with interpolation)
   pages_selected: { en: "page(s) selected", tr: "sayfa seçildi" },
