@@ -7,7 +7,6 @@ import {
   ArrowLeft,
   ChevronLeft,
   ChevronRight,
-  ChevronDown,
   Clock,
   Loader2,
   Sparkles,
@@ -22,8 +21,8 @@ import {
   ImageIcon,
   Play,
   Check,
-  Palette,
-  Save,
+  Volume2,
+  Layers,
 } from "lucide-react";
 import { useLanguage } from "@/lib/language-context";
 import { PipelineJSON, Scene } from "@/types/pipeline";
@@ -41,16 +40,41 @@ interface SceneImage {
   created_at: string;
 }
 
+interface SceneComposite {
+  id: string;
+  pipeline_id: string;
+  scene_id: string;
+  background_image_id: string | null;
+  prompt: string;
+  model_used: string;
+  image_url: string;
+  width: number | null;
+  height: number | null;
+  seed: number | null;
+  created_at: string;
+}
+
+interface SceneAudio {
+  id: string;
+  pipeline_id: string;
+  scene_id: string;
+  character_id: string | null;
+  text: string;
+  model_used: string;
+  audio_url: string;
+  duration_ms: number | null;
+  created_at: string;
+}
+
 interface SceneVideo {
   id: string;
   pipeline_id: string;
   scene_id: string;
-  scene_image_id: string | null;
+  composite_image_id: string | null;
   prompt: string;
   model_used: string;
   video_url: string;
   duration: number | null;
-  fal_request_id: string | null;
   created_at: string;
 }
 
@@ -126,11 +150,15 @@ export default function ScenesPage() {
 
   const [pipeline, setPipeline] = useState<PipelineJSON | null>(null);
   const [sceneImages, setSceneImages] = useState<SceneImage[]>([]);
+  const [sceneComposites, setSceneComposites] = useState<SceneComposite[]>([]);
+  const [sceneAudioList, setSceneAudioList] = useState<SceneAudio[]>([]);
   const [sceneVideos, setSceneVideos] = useState<SceneVideo[]>([]);
   const [allCharImages, setAllCharImages] = useState<CharacterImage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [generating, setGenerating] = useState<Record<string, boolean>>({});
+  const [generatingComposite, setGeneratingComposite] = useState<Record<string, boolean>>({});
+  const [generatingAudio, setGeneratingAudio] = useState<Record<string, boolean>>({});
   const [generatingVideo, setGeneratingVideo] = useState<Record<string, boolean>>({});
   const [generatingAll, setGeneratingAll] = useState(false);
   const [expandedImage, setExpandedImage] = useState<string | null>(null);
@@ -140,11 +168,9 @@ export default function ScenesPage() {
   const [editedAnimPrompts, setEditedAnimPrompts] = useState<Record<string, string>>({});
   const [editingAnimPrompt, setEditingAnimPrompt] = useState<Record<string, boolean>>({});
   const [selectedImagePerScene, setSelectedImagePerScene] = useState<Record<string, string>>({});
+  const [selectedCompositePerScene, setSelectedCompositePerScene] = useState<Record<string, string>>({});
 
-  const [stylePrompt, setStylePrompt] = useState("");
-  const [stylePromptSaved, setStylePromptSaved] = useState("");
-  const [styleExpanded, setStyleExpanded] = useState(false);
-  const [styleSaving, setStyleSaving] = useState(false);
+  const [styleImageUrl, setStyleImageUrl] = useState("");
 
   const [showAddSceneModal, setShowAddSceneModal] = useState(false);
   const [newSceneTitle, setNewSceneTitle] = useState("");
@@ -180,19 +206,20 @@ export default function ScenesPage() {
   useEffect(() => {
     const load = async () => {
       try {
-        const [pipelineRes, scenesRes, charsRes, videosRes] = await Promise.all([
+        const [pipelineRes, scenesRes, charsRes, videosRes, compositesRes, audioRes] = await Promise.all([
           fetch(`/api/pipelines/${pipelineId}`),
           fetch(`/api/scenes?pipeline_id=${pipelineId}`),
           fetch(`/api/characters?pipeline_id=${pipelineId}`),
           fetch(`/api/scenes/videos?pipeline_id=${pipelineId}`).catch(() => null),
+          fetch(`/api/scenes/composites?pipeline_id=${pipelineId}`).catch(() => null),
+          fetch(`/api/scenes/audio?pipeline_id=${pipelineId}`).catch(() => null),
         ]);
 
         if (!pipelineRes.ok) throw new Error("Failed to load pipeline");
         const pData = await pipelineRes.json();
         const pipelineData = pData.pipeline_data as PipelineJSON;
         setPipeline(pipelineData);
-        setStylePrompt(pipelineData?.style_prompt || "");
-        setStylePromptSaved(pipelineData?.style_prompt || "");
+        setStyleImageUrl(pipelineData?.style_image_url || "");
 
         const prompts: Record<string, string> = {};
         const animPrompts: Record<string, string> = {};
@@ -217,6 +244,16 @@ export default function ScenesPage() {
           const vData = await videosRes.json();
           setSceneVideos(vData.videos || []);
         }
+
+        if (compositesRes?.ok) {
+          const compData = await compositesRes.json();
+          setSceneComposites(compData.composites || []);
+        }
+
+        if (audioRes?.ok) {
+          const aData = await audioRes.json();
+          setSceneAudioList(aData.audio || []);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load");
       } finally {
@@ -226,35 +263,12 @@ export default function ScenesPage() {
     load();
   }, [pipelineId]);
 
-  const saveStylePrompt = useCallback(async () => {
-    setStyleSaving(true);
-    try {
-      const res = await fetch(`/api/pipelines/${pipelineId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ style_prompt: stylePrompt }),
-      });
-      if (!res.ok) throw new Error("Failed to save");
-      setStylePromptSaved(stylePrompt);
-    } catch {
-      alert("Failed to save style prompt");
-    } finally {
-      setStyleSaving(false);
-    }
-  }, [pipelineId, stylePrompt]);
-
   const resetScene = useCallback(
     (sceneId: string) => {
       const scene = pipeline?.scenes?.find((s) => s.id === sceneId);
       if (!scene) return;
-      setEditedPrompts((prev) => ({
-        ...prev,
-        [sceneId]: scene.scene_image_prompt,
-      }));
-      setEditedAnimPrompts((prev) => ({
-        ...prev,
-        [sceneId]: scene.animation_prompt,
-      }));
+      setEditedPrompts((prev) => ({ ...prev, [sceneId]: scene.scene_image_prompt }));
+      setEditedAnimPrompts((prev) => ({ ...prev, [sceneId]: scene.animation_prompt }));
     },
     [pipeline]
   );
@@ -262,17 +276,12 @@ export default function ScenesPage() {
   const generateScene = useCallback(
     async (scene: Scene) => {
       const prompt = editedPrompts[scene.id] || scene.scene_image_prompt;
-
       setGenerating((prev) => ({ ...prev, [scene.id]: true }));
       try {
         const res = await fetch("/api/scenes/generate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            pipelineId,
-            sceneId: scene.id,
-            prompt,
-          }),
+          body: JSON.stringify({ pipelineId, sceneId: scene.id, prompt }),
         });
         if (!res.ok) {
           const err = await res.json().catch(() => ({ error: "Generation failed" }));
@@ -290,25 +299,118 @@ export default function ScenesPage() {
     [pipelineId, editedPrompts, t]
   );
 
-  const generateVideo = useCallback(
+  const generateComposite = useCallback(
     async (scene: Scene) => {
-      const selectedImgId = selectedImagePerScene[scene.id];
-      if (!selectedImgId) {
-        alert(t("select_scene_image"));
+      const selectedBgId = selectedImagePerScene[scene.id];
+      if (!selectedBgId) {
+        alert(t("select_background_first"));
         return;
       }
-      const selectedImg = sceneImages.find((i) => i.id === selectedImgId);
-      if (!selectedImg) return;
+      const selectedBg = sceneImages.find((i) => i.id === selectedBgId);
+      if (!selectedBg) return;
 
-      const animPrompt = editedAnimPrompts[scene.id] || scene.animation_prompt;
-
-      const characterImages = (scene.characters || [])
+      const charImageUrls = (scene.characters || [])
         .map((charId) => {
           const portrait = getCharPortrait(charId);
-          if (!portrait) return null;
-          return { name: getCharName(charId), imageUrl: portrait.image_url };
+          return portrait?.image_url;
         })
-        .filter(Boolean);
+        .filter(Boolean) as string[];
+
+      const charNames = (scene.characters || []).map((cid) => getCharName(cid));
+      const compositePrompt = `Place ${charNames.join(", ")} naturally into this background scene. ${editedAnimPrompts[scene.id] || scene.animation_prompt}. Maintain the exact background environment and lighting. Characters should be properly scaled and lit to match the scene.`;
+
+      setGeneratingComposite((prev) => ({ ...prev, [scene.id]: true }));
+      try {
+        const res = await fetch("/api/scenes/composite", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            pipelineId,
+            sceneId: scene.id,
+            backgroundImageId: selectedBgId,
+            backgroundImageUrl: selectedBg.image_url,
+            characterImageUrls: charImageUrls,
+            compositePrompt,
+          }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: "Composite failed" }));
+          throw new Error(err.error || "Composite failed");
+        }
+        const newComposite: SceneComposite = await res.json();
+        setSceneComposites((prev) => [...prev, newComposite]);
+        setSelectedCompositePerScene((prev) => ({ ...prev, [scene.id]: newComposite.id }));
+      } catch (err) {
+        alert(err instanceof Error ? err.message : t("generation_failed"));
+      } finally {
+        setGeneratingComposite((prev) => ({ ...prev, [scene.id]: false }));
+      }
+    },
+    [pipelineId, selectedImagePerScene, sceneImages, getCharPortrait, getCharName, editedAnimPrompts, t]
+  );
+
+  const generateAudio = useCallback(
+    async (scene: Scene) => {
+      const hasDialogue = (scene.dialogue?.length || 0) > 0;
+      const hasNarration = !!scene.narration;
+      if (!hasDialogue && !hasNarration) return;
+
+      const text = hasDialogue
+        ? scene.dialogue.map((d) => d.line).join(" ")
+        : scene.narration;
+      const speakingCharId = hasDialogue ? scene.dialogue[0]?.character : null;
+
+      setGeneratingAudio((prev) => ({ ...prev, [scene.id]: true }));
+      try {
+        const res = await fetch("/api/scenes/generate-audio", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            pipelineId,
+            sceneId: scene.id,
+            characterId: speakingCharId,
+            text,
+          }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: "Audio generation failed" }));
+          throw new Error(err.error || "Audio generation failed");
+        }
+        const newAudio: SceneAudio = await res.json();
+        setSceneAudioList((prev) => [...prev, newAudio]);
+      } catch (err) {
+        alert(err instanceof Error ? err.message : t("generation_failed"));
+      } finally {
+        setGeneratingAudio((prev) => ({ ...prev, [scene.id]: false }));
+      }
+    },
+    [pipelineId, t]
+  );
+
+  const generateVideo = useCallback(
+    async (scene: Scene) => {
+      const selectedCompId = selectedCompositePerScene[scene.id];
+      if (!selectedCompId) {
+        alert(t("select_composite_first"));
+        return;
+      }
+      const selectedComp = sceneComposites.find((c) => c.id === selectedCompId);
+      if (!selectedComp) return;
+
+      const animPrompt = editedAnimPrompts[scene.id] || scene.animation_prompt;
+      const hasDialogue = (scene.dialogue?.length || 0) > 0;
+      const hasNarration = !!scene.narration;
+      const hasAnyAudio = hasDialogue || hasNarration;
+
+      const sceneAudio = sceneAudioList
+        .filter((a) => a.scene_id === scene.id)
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      const latestAudio = hasAnyAudio ? sceneAudio[0] : null;
+
+      if (hasAnyAudio && !latestAudio) {
+        alert(t("generate_audio_first"));
+        return;
+      }
 
       setGeneratingVideo((prev) => ({ ...prev, [scene.id]: true }));
       try {
@@ -318,10 +420,12 @@ export default function ScenesPage() {
           body: JSON.stringify({
             pipelineId,
             sceneId: scene.id,
-            sceneImageId: selectedImgId,
-            sceneImageUrl: selectedImg.image_url,
+            compositeImageId: selectedCompId,
+            compositeImageUrl: selectedComp.image_url,
             animationPrompt: animPrompt,
-            characterImages,
+            audioUrl: latestAudio?.audio_url || null,
+            audioDurationMs: latestAudio?.duration_ms || null,
+            isNarration: hasNarration && !hasDialogue,
           }),
         });
         if (!res.ok) {
@@ -336,7 +440,7 @@ export default function ScenesPage() {
         setGeneratingVideo((prev) => ({ ...prev, [scene.id]: false }));
       }
     },
-    [pipelineId, selectedImagePerScene, sceneImages, editedAnimPrompts, getCharPortrait, getCharName, t]
+    [pipelineId, selectedCompositePerScene, sceneComposites, editedAnimPrompts, sceneAudioList, t]
   );
 
   const generateAllScenes = useCallback(async () => {
@@ -388,6 +492,7 @@ export default function ScenesPage() {
       setGenerating((prev) => ({ ...prev, [`ai_${sceneId}`]: true }));
       try {
         const characterNames = (scene.characters || []).map((cid) => getCharName(cid));
+        const dialogueText = scene.dialogue?.map((d) => `${d.character}: "${d.line}"`).join("\n") || "";
 
         const res = await fetch("/api/scenes/prompt-help", {
           method: "POST",
@@ -395,6 +500,7 @@ export default function ScenesPage() {
           body: JSON.stringify({
             title: scene.title,
             narration: scene.narration,
+            dialogue: dialogueText,
             characterNames,
           }),
         });
@@ -441,20 +547,14 @@ export default function ScenesPage() {
       const res = await fetch("/api/scenes/prompt-help", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: newSceneTitle,
-          narration: newSceneDesc,
-          characterNames: [],
-        }),
+        body: JSON.stringify({ title: newSceneTitle, narration: newSceneDesc, characterNames: [] }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: "Failed" }));
         throw new Error(err.error || "Failed to generate prompt");
       }
       const data = await res.json();
-      if (data.sceneImagePrompt) {
-        setNewScenePrompt(data.sceneImagePrompt);
-      }
+      if (data.sceneImagePrompt) setNewScenePrompt(data.sceneImagePrompt);
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to generate prompt");
     } finally {
@@ -463,36 +563,22 @@ export default function ScenesPage() {
   }, [newSceneTitle, newSceneDesc, newScenePrompt, t]);
 
   const handleGenerateCustomScene = useCallback(async () => {
-    if (!newSceneTitle.trim()) {
-      alert(t("name_required"));
-      return;
-    }
-    if (!newScenePrompt.trim()) {
-      alert(t("prompt_required"));
-      return;
-    }
-
+    if (!newSceneTitle.trim()) { alert(t("name_required")); return; }
+    if (!newScenePrompt.trim()) { alert(t("prompt_required")); return; }
     setGeneratingCustomScene(true);
     try {
       const sceneId = getNextCustomSceneId();
       const res = await fetch("/api/scenes/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          pipelineId,
-          sceneId,
-          prompt: newScenePrompt.trim(),
-        }),
+        body: JSON.stringify({ pipelineId, sceneId, prompt: newScenePrompt.trim() }),
       });
-
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: "Generation failed" }));
         throw new Error(err.error || "Generation failed");
       }
-
       const newImage: SceneImage = await res.json();
       setSceneImages((prev) => [...prev, newImage]);
-
       setShowAddSceneModal(false);
       setNewSceneTitle("");
       setNewSceneDesc("");
@@ -507,26 +593,33 @@ export default function ScenesPage() {
   useEffect(() => {
     if (!expandedImage) return;
     overlayRef.current?.focus();
-    const currentIdx = sceneImages.findIndex((i) => i.id === expandedImage);
+    const allImages = [...sceneImages, ...sceneComposites];
+    const currentIdx = allImages.findIndex((i) => i.id === expandedImage);
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "ArrowRight" || e.key === "ArrowLeft" || e.key === "Escape") {
+      if (["ArrowRight", "ArrowLeft", "Escape"].includes(e.key)) {
         e.preventDefault();
         e.stopPropagation();
       }
-      if (e.key === "ArrowRight" && currentIdx < sceneImages.length - 1) {
-        setExpandedImage(sceneImages[currentIdx + 1].id);
+      if (e.key === "ArrowRight" && currentIdx < allImages.length - 1) {
+        setExpandedImage(allImages[currentIdx + 1].id);
       } else if (e.key === "ArrowLeft" && currentIdx > 0) {
-        setExpandedImage(sceneImages[currentIdx - 1].id);
+        setExpandedImage(allImages[currentIdx - 1].id);
       } else if (e.key === "Escape") {
         setExpandedImage(null);
       }
     };
     window.addEventListener("keydown", handleKey, true);
     return () => window.removeEventListener("keydown", handleKey, true);
-  }, [expandedImage, sceneImages]);
+  }, [expandedImage, sceneImages, sceneComposites]);
 
   const getSceneImagesForId = (sceneId: string) =>
     sceneImages.filter((img) => img.scene_id === sceneId);
+
+  const getSceneCompositesForId = (sceneId: string) =>
+    sceneComposites.filter((c) => c.scene_id === sceneId);
+
+  const getSceneAudioForId = (sceneId: string) =>
+    sceneAudioList.filter((a) => a.scene_id === sceneId);
 
   const getSceneVideosForId = (sceneId: string) =>
     sceneVideos.filter((v) => v.scene_id === sceneId);
@@ -540,10 +633,7 @@ export default function ScenesPage() {
     );
   };
 
-  const customSceneImages = sceneImages.filter((img) => {
-    const pipelineSceneIds = pipeline?.scenes?.map((s) => s.id) || [];
-    return !pipelineSceneIds.includes(img.scene_id);
-  });
+  const hasStyleImage = !!styleImageUrl;
 
   if (loading) {
     return (
@@ -664,7 +754,7 @@ export default function ScenesPage() {
 
             <button
               onClick={generateAllScenes}
-              disabled={generatingAll || !pipeline.scenes?.length}
+              disabled={generatingAll || !pipeline.scenes?.length || !hasStyleImage}
               className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-900/20 border border-emerald-800/30 text-emerald-400 hover:bg-emerald-900/30 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {generatingAll ? (
@@ -673,73 +763,38 @@ export default function ScenesPage() {
                 <Sparkles size={14} />
               )}
               <span>
-                {generatingAll ? t("generating_all_scenes") : t("generate_all_scenes")}
+                {generatingAll ? t("generating_all_scenes") : t("generate_all_backgrounds")}
               </span>
             </button>
           </div>
         </div>
 
-        {/* Style Prompt */}
-        <div className="mb-6 bg-ink-soft border border-ink-muted rounded-2xl overflow-hidden">
-          <button
-            onClick={() => setStyleExpanded(!styleExpanded)}
-            className="w-full flex items-center justify-between px-6 py-3 hover:bg-ink/30 transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <Palette size={14} className="text-violet-400" />
-              <span className="text-sm font-semibold text-parchment/70">{t("style_prompt_label")}</span>
-              {stylePrompt && !styleExpanded && (
-                <span className="text-[10px] text-parchment/30 font-mono truncate max-w-[300px]">
-                  — {stylePrompt.slice(0, 60)}…
-                </span>
-              )}
-            </div>
-            <ChevronDown
-              size={14}
-              className={`text-parchment/30 transition-transform ${styleExpanded ? "rotate-180" : ""}`}
-            />
-          </button>
-          {styleExpanded && (
-            <div className="px-6 pb-4 space-y-3">
-              <p className="text-[10px] text-parchment/30">
-                {t("style_prompt_desc")}
-              </p>
-              <textarea
-                value={stylePrompt}
-                onChange={(e) => setStylePrompt(e.target.value)}
-                rows={3}
-                placeholder={t("style_prompt_placeholder")}
-                className="w-full bg-ink/60 border border-violet-800/30 rounded-lg p-3 text-[11px] text-parchment/70 font-mono leading-relaxed resize-y focus:outline-none focus:border-violet-600/50 transition-colors placeholder:text-parchment/15"
-              />
-              {stylePrompt !== stylePromptSaved && (
-                <div className="flex justify-end">
-                  <button
-                    onClick={saveStylePrompt}
-                    disabled={styleSaving}
-                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-violet-900/20 border border-violet-800/30 text-violet-400 hover:bg-violet-900/30 transition-colors disabled:opacity-50"
-                  >
-                    {styleSaving ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />}
-                    {styleSaving ? t("saving") : t("save")}
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+        {!hasStyleImage && (
+          <div className="mb-6 px-4 py-3 rounded-xl bg-red-900/20 border border-red-800/30 text-red-400 text-sm">
+            {t("style_image_required_msg")} <Link href={`/characters/${pipelineId}`} className="underline">{t("go_to_characters")}</Link>
+          </div>
+        )}
 
         <div className="space-y-6">
           {pipeline.scenes?.map((scene) => {
             const imgs = getSceneImagesForId(scene.id);
+            const composites = getSceneCompositesForId(scene.id);
+            const audioItems = getSceneAudioForId(scene.id);
             const videos = getSceneVideosForId(scene.id);
             const isGen = generating[scene.id];
             const isAiGen = generating[`ai_${scene.id}`];
+            const isCompGen = generatingComposite[scene.id];
+            const isAudioGen = generatingAudio[scene.id];
             const isVidGen = generatingVideo[scene.id];
             const scenePrompt = editedPrompts[scene.id] ?? scene.scene_image_prompt;
             const animPrompt = editedAnimPrompts[scene.id] ?? scene.animation_prompt;
             const isEditing = editingPrompt[scene.id];
             const isEditingAnim = editingAnimPrompt[scene.id];
             const modified = isSceneModified(scene);
-            const selectedImgId = selectedImagePerScene[scene.id];
+            const selectedBgId = selectedImagePerScene[scene.id];
+            const selectedCompId = selectedCompositePerScene[scene.id];
+            const hasDialogue = (scene.dialogue?.length || 0) > 0;
+            const hasChars = (scene.characters?.length || 0) > 0;
 
             const activeCharNames = new Map<string, string>();
             for (const charId of scene.characters || []) {
@@ -764,41 +819,30 @@ export default function ScenesPage() {
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <span className="text-xs font-mono text-emerald-400">
-                          {scene.id}
-                        </span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-film/15 text-amber-glow font-mono">
-                          {scene.duration || 5}s
-                        </span>
-                        {modified && (
-                          <span className="text-[10px] text-amber-400 italic">
-                            {t("modified")}
+                        <span className="text-xs font-mono text-emerald-400">{scene.id}</span>
+                        {hasDialogue && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-900/30 text-violet-400 font-mono">
+                            {t("dialogue_label")}
                           </span>
+                        )}
+                        {!hasDialogue && scene.narration && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-900/30 text-blue-400 font-mono">
+                            {t("narration_label")}
+                          </span>
+                        )}
+                        {modified && (
+                          <span className="text-[10px] text-amber-400 italic">{t("modified")}</span>
                         )}
                       </div>
                       <h3 className="font-display text-lg font-semibold text-parchment">
                         {scene.title}
                       </h3>
-                      {(scene.characters?.length || 0) > 0 && (
+                      {hasChars && (
                         <p className="text-[11px] text-parchment/30 mt-0.5">
                           {scene.characters.map((cid) => getCharName(cid)).join(", ")}
                         </p>
                       )}
                     </div>
-                    <button
-                      onClick={() => generateScene(scene)}
-                      disabled={isGen}
-                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0 bg-emerald-900/20 border border-emerald-800/30 text-emerald-400 hover:bg-emerald-900/30"
-                    >
-                      {isGen ? (
-                        <Loader2 size={11} className="animate-spin" />
-                      ) : (
-                        <ImageIcon size={11} />
-                      )}
-                      <span>
-                        {isGen ? t("generating_scene") : t("generate_scene")}
-                      </span>
-                    </button>
                   </div>
 
                   {scene.narration && (
@@ -806,34 +850,28 @@ export default function ScenesPage() {
                       {scene.narration}
                     </p>
                   )}
-                  {scene.dialogue?.length > 0 && (
+                  {hasDialogue && (
                     <div className="mt-3 space-y-1">
-                      {scene.dialogue.slice(0, 3).map((d, i) => (
+                      {scene.dialogue.map((d, i) => (
                         <p key={i} className="text-sm text-parchment/60 leading-relaxed">
-                          <span className="text-emerald-400/70 font-semibold">{d.character}:</span>{" "}
+                          <span className="text-emerald-400/70 font-semibold">{getCharName(d.character)}:</span>{" "}
                           <span className="italic">&quot;{d.line}&quot;</span>
                         </p>
                       ))}
-                      {scene.dialogue.length > 3 && (
-                        <p className="text-[10px] text-parchment/30 italic">
-                          +{scene.dialogue.length - 3} more lines
-                        </p>
-                      )}
                     </div>
                   )}
                 </div>
 
                 <div className="p-6 space-y-5">
-                  {/* Step 1: Scene Image */}
+                  {/* Step 1: Background */}
                   <div>
                     <div className="flex items-center gap-2 mb-3">
                       <span className="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-900/30 text-emerald-400 text-[10px] font-bold">1</span>
                       <span className="text-[10px] text-parchment/30 uppercase tracking-wider font-semibold">
-                        {t("scene_image_prompt_label")}
+                        {t("step_background")}
                       </span>
                     </div>
 
-                    {/* Prompt section */}
                     <div className="mb-3">
                       <div className="flex items-center justify-end mb-1.5 gap-1.5">
                         <button
@@ -841,11 +879,7 @@ export default function ScenesPage() {
                           disabled={isAiGen}
                           className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-lg bg-violet-900/20 border border-violet-800/30 text-violet-400 hover:bg-violet-900/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          {isAiGen ? (
-                            <Loader2 size={10} className="animate-spin" />
-                          ) : (
-                            <Wand2 size={10} />
-                          )}
+                          {isAiGen ? <Loader2 size={10} className="animate-spin" /> : <Wand2 size={10} />}
                           {isAiGen ? t("ai_help_generating") : t("ai_help")}
                         </button>
                         {modified && (
@@ -858,12 +892,7 @@ export default function ScenesPage() {
                           </button>
                         )}
                         <button
-                          onClick={() =>
-                            setEditingPrompt((prev) => ({
-                              ...prev,
-                              [scene.id]: !prev[scene.id],
-                            }))
-                          }
+                          onClick={() => setEditingPrompt((prev) => ({ ...prev, [scene.id]: !prev[scene.id] }))}
                           className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded border transition-colors ${
                             isEditing
                               ? "bg-amber-film/20 border-amber-film/40 text-amber-glow"
@@ -877,40 +906,35 @@ export default function ScenesPage() {
                       {isEditing ? (
                         <textarea
                           value={scenePrompt}
-                          onChange={(e) =>
-                            setEditedPrompts((prev) => ({
-                              ...prev,
-                              [scene.id]: e.target.value,
-                            }))
-                          }
+                          onChange={(e) => setEditedPrompts((prev) => ({ ...prev, [scene.id]: e.target.value }))}
                           rows={3}
                           autoFocus
                           className="w-full bg-ink/60 border border-amber-film/30 rounded-lg p-3 text-[11px] text-parchment/70 font-mono leading-relaxed resize-y focus:outline-none focus:border-amber-film/50 transition-colors"
                         />
                       ) : (
                         <div className="bg-ink/60 border border-ink-muted/50 rounded-lg p-3">
-                          <HighlightedPrompt
-                            text={scenePrompt}
-                            characterNames={activeCharNames}
-                          />
+                          <HighlightedPrompt text={scenePrompt} characterNames={activeCharNames} />
                         </div>
                       )}
                     </div>
 
-                    {/* Image gallery with selection */}
-                    {imgs.length > 0 ? (
+                    <button
+                      onClick={() => generateScene(scene)}
+                      disabled={isGen || !hasStyleImage}
+                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed mb-3 bg-emerald-900/20 border border-emerald-800/30 text-emerald-400 hover:bg-emerald-900/30"
+                    >
+                      {isGen ? <Loader2 size={11} className="animate-spin" /> : <ImageIcon size={11} />}
+                      <span>{isGen ? t("generating_scene") : t("generate_background")}</span>
+                    </button>
+
+                    {imgs.length > 0 && (
                       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
                         {imgs.map((img) => {
-                          const isSelected = selectedImgId === img.id;
+                          const isSelected = selectedBgId === img.id;
                           return (
                             <div key={img.id} className="group relative">
                               <button
-                                onClick={() =>
-                                  setSelectedImagePerScene((prev) => ({
-                                    ...prev,
-                                    [scene.id]: img.id,
-                                  }))
-                                }
+                                onClick={() => setSelectedImagePerScene((prev) => ({ ...prev, [scene.id]: img.id }))}
                                 onDoubleClick={() => setExpandedImage(img.id)}
                                 className={`w-full aspect-[9/16] rounded-lg overflow-hidden border-2 transition-all ${
                                   isSelected
@@ -918,11 +942,7 @@ export default function ScenesPage() {
                                     : "border-ink-muted hover:border-emerald-400/40"
                                 }`}
                               >
-                                <img
-                                  src={img.image_url}
-                                  alt={scene.title}
-                                  className="w-full h-full object-cover"
-                                />
+                                <img src={img.image_url} alt={scene.title} className="w-full h-full object-cover" />
                               </button>
                               {isSelected && (
                                 <div className="absolute top-1.5 left-1.5 p-0.5 rounded-full bg-emerald-500 text-ink">
@@ -939,53 +959,148 @@ export default function ScenesPage() {
                           );
                         })}
                       </div>
-                    ) : (
-                      <p className="text-xs text-parchment/20 italic">
-                        {t("no_scene_images_yet")}
-                      </p>
                     )}
                   </div>
 
-                  {/* Step 2: Animation / Video */}
-                  <div className="border-t border-ink-muted/30 pt-5">
+                  {/* Step 2: Composite */}
+                  <div className={`border-t border-ink-muted/30 pt-5 ${!selectedBgId ? "opacity-40 pointer-events-none" : ""}`}>
                     <div className="flex items-center gap-2 mb-3">
-                      <span className="flex items-center justify-center w-5 h-5 rounded-full bg-violet-900/30 text-violet-400 text-[10px] font-bold">2</span>
+                      <span className="flex items-center justify-center w-5 h-5 rounded-full bg-amber-900/30 text-amber-400 text-[10px] font-bold">2</span>
                       <span className="text-[10px] text-parchment/30 uppercase tracking-wider font-semibold">
-                        {t("animation_prompt")}
+                        {t("step_composite")}
                       </span>
                     </div>
 
-                    {/* Character portraits preview */}
                     {charPortraits.length > 0 && (
                       <div className="flex items-center gap-2 mb-3">
-                        <span className="text-[10px] text-parchment/20">Elements:</span>
-                        {charPortraits.map((c, i) => (
+                        <span className="text-[10px] text-parchment/20">{t("characters_to_composite")}:</span>
+                        {charPortraits.map((c) => (
                           <div key={c.charId} className="flex items-center gap-1">
-                            <div className="w-8 h-10 rounded overflow-hidden border border-emerald-800/30">
-                              <img
-                                src={c.portrait!.image_url}
-                                alt={c.name}
-                                className="w-full h-full object-cover"
-                              />
+                            <div className="w-8 h-10 rounded overflow-hidden border border-amber-800/30">
+                              <img src={c.portrait!.image_url} alt={c.name} className="w-full h-full object-cover" />
                             </div>
-                            <span className="text-[10px] text-parchment/40">
-                              @Element{i + 1}
-                            </span>
+                            <span className="text-[10px] text-parchment/40">{c.name}</span>
                           </div>
                         ))}
                       </div>
                     )}
 
-                    {/* Animation prompt */}
+                    <button
+                      onClick={() => generateComposite(scene)}
+                      disabled={isCompGen || !selectedBgId || !hasChars}
+                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed mb-3 bg-amber-900/20 border border-amber-800/30 text-amber-400 hover:bg-amber-900/30"
+                    >
+                      {isCompGen ? <Loader2 size={11} className="animate-spin" /> : <Layers size={11} />}
+                      <span>{isCompGen ? t("compositing") : t("composite_characters")}</span>
+                    </button>
+
+                    {composites.length > 0 && (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                        {composites.map((comp) => {
+                          const isSelected = selectedCompId === comp.id;
+                          return (
+                            <div key={comp.id} className="group relative">
+                              <button
+                                onClick={() => setSelectedCompositePerScene((prev) => ({ ...prev, [scene.id]: comp.id }))}
+                                onDoubleClick={() => setExpandedImage(comp.id)}
+                                className={`w-full aspect-[9/16] rounded-lg overflow-hidden border-2 transition-all ${
+                                  isSelected
+                                    ? "border-amber-400 ring-2 ring-amber-400/30"
+                                    : "border-ink-muted hover:border-amber-400/40"
+                                }`}
+                              >
+                                <img src={comp.image_url} alt={scene.title} className="w-full h-full object-cover" />
+                              </button>
+                              {isSelected && (
+                                <div className="absolute top-1.5 left-1.5 p-0.5 rounded-full bg-amber-500 text-ink">
+                                  <Check size={10} />
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Step 3: Audio (dialogue and narration scenes) */}
+                  {(hasDialogue || !!scene.narration) && (
+                    <div className={`border-t border-ink-muted/30 pt-5 ${!selectedCompId ? "opacity-40 pointer-events-none" : ""}`}>
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="flex items-center justify-center w-5 h-5 rounded-full bg-violet-900/30 text-violet-400 text-[10px] font-bold">3</span>
+                        <span className="text-[10px] text-parchment/30 uppercase tracking-wider font-semibold">
+                          {hasDialogue ? t("step_audio") : t("step_narration_audio")}
+                        </span>
+                        {!hasDialogue && (
+                          <span className="text-[10px] text-parchment/20 font-mono">
+                            {t("narration_mux_info")}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="bg-ink/40 rounded-lg p-3 mb-3">
+                        {hasDialogue ? (
+                          <>
+                            <p className="text-[10px] text-parchment/20 mb-1">{t("dialogue_text")}:</p>
+                            {scene.dialogue.map((d, i) => (
+                              <p key={i} className="text-[11px] text-parchment/50 font-mono">
+                                <span className="text-violet-400/70">{getCharName(d.character)}:</span> &quot;{d.line}&quot;
+                              </p>
+                            ))}
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-[10px] text-parchment/20 mb-1">{t("narration_text")}:</p>
+                            <p className="text-[11px] text-parchment/50 font-mono italic">
+                              {scene.narration}
+                            </p>
+                          </>
+                        )}
+                      </div>
+
+                      <button
+                        onClick={() => generateAudio(scene)}
+                        disabled={isAudioGen || !selectedCompId}
+                        className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed mb-3 bg-violet-900/20 border border-violet-800/30 text-violet-400 hover:bg-violet-900/30"
+                      >
+                        {isAudioGen ? <Loader2 size={11} className="animate-spin" /> : <Volume2 size={11} />}
+                        <span>{isAudioGen ? t("generating_audio") : t("generate_audio")}</span>
+                      </button>
+
+                      {audioItems.length > 0 && (
+                        <div className="space-y-2">
+                          {audioItems.map((audio) => (
+                            <div key={audio.id} className="flex items-center gap-3 bg-ink/40 rounded-lg p-2">
+                              <audio src={audio.audio_url} controls className="h-8 flex-1" />
+                              <span className="text-[10px] text-parchment/30 font-mono shrink-0">
+                                {audio.duration_ms ? `${(audio.duration_ms / 1000).toFixed(1)}s` : "—"}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Step 4: Video */}
+                  <div className={`border-t border-ink-muted/30 pt-5 ${!selectedCompId ? "opacity-40 pointer-events-none" : ""}`}>
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="flex items-center justify-center w-5 h-5 rounded-full bg-rose-900/30 text-rose-400 text-[10px] font-bold">
+                        {(hasDialogue || !!scene.narration) ? "4" : "3"}
+                      </span>
+                      <span className="text-[10px] text-parchment/30 uppercase tracking-wider font-semibold">
+                        {t("step_video")}
+                      </span>
+                      <span className="text-[10px] text-parchment/20 font-mono">
+                        {hasDialogue ? "LTX-2 Audio-to-Video" : "LTX-2 Image-to-Video"}
+                        {!hasDialogue && !!scene.narration && ` + ${t("narration_mux_label")}`}
+                      </span>
+                    </div>
+
                     <div className="mb-3">
                       <div className="flex items-center justify-end mb-1.5">
                         <button
-                          onClick={() =>
-                            setEditingAnimPrompt((prev) => ({
-                              ...prev,
-                              [scene.id]: !prev[scene.id],
-                            }))
-                          }
+                          onClick={() => setEditingAnimPrompt((prev) => ({ ...prev, [scene.id]: !prev[scene.id] }))}
                           className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded border transition-colors ${
                             isEditingAnim
                               ? "bg-amber-film/20 border-amber-film/40 text-amber-glow"
@@ -999,58 +1114,38 @@ export default function ScenesPage() {
                       {isEditingAnim ? (
                         <textarea
                           value={animPrompt}
-                          onChange={(e) =>
-                            setEditedAnimPrompts((prev) => ({
-                              ...prev,
-                              [scene.id]: e.target.value,
-                            }))
-                          }
+                          onChange={(e) => setEditedAnimPrompts((prev) => ({ ...prev, [scene.id]: e.target.value }))}
                           rows={3}
                           autoFocus
-                          className="w-full bg-ink/60 border border-violet-500/30 rounded-lg p-3 text-[11px] text-parchment/70 font-mono leading-relaxed resize-y focus:outline-none focus:border-violet-500/50 transition-colors"
+                          className="w-full bg-ink/60 border border-rose-500/30 rounded-lg p-3 text-[11px] text-parchment/70 font-mono leading-relaxed resize-y focus:outline-none focus:border-rose-500/50 transition-colors"
                         />
                       ) : (
                         <div className="bg-ink/60 border border-ink-muted/50 rounded-lg p-3">
-                          <p className="text-[11px] text-parchment/40 font-mono leading-relaxed whitespace-pre-wrap">
-                            {animPrompt || <span className="italic text-parchment/20">No animation prompt</span>}
-                          </p>
+                          <HighlightedPrompt text={animPrompt} characterNames={activeCharNames} />
                         </div>
                       )}
                     </div>
 
-                    {/* Generate Video button */}
                     <button
                       onClick={() => generateVideo(scene)}
-                      disabled={isVidGen || !selectedImgId}
-                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-violet-900/20 border border-violet-800/30 text-violet-400 hover:bg-violet-900/30"
+                      disabled={isVidGen || !selectedCompId || ((hasDialogue || !!scene.narration) && audioItems.length === 0)}
+                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed mb-3 bg-rose-900/20 border border-rose-800/30 text-rose-400 hover:bg-rose-900/30"
                     >
-                      {isVidGen ? (
-                        <Loader2 size={11} className="animate-spin" />
-                      ) : (
-                        <Play size={11} />
-                      )}
-                      <span>
-                        {isVidGen ? t("generating_video") : t("generate_video")}
-                      </span>
-                      {!selectedImgId && (
-                        <span className="text-parchment/20 ml-1">
-                          ({t("select_scene_image")})
-                        </span>
-                      )}
+                      {isVidGen ? <Loader2 size={11} className="animate-spin" /> : <Play size={11} />}
+                      <span>{isVidGen ? t("generating_video") : t("generate_video")}</span>
                     </button>
 
-                    {/* Video gallery */}
                     {videos.length > 0 && (
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-3">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                         {videos.map((vid) => (
                           <div key={vid.id} className="relative">
                             <video
                               src={vid.video_url}
                               controls
-                              className="w-full aspect-[9/16] rounded-lg border border-violet-800/30 bg-ink object-cover"
+                              className="w-full aspect-[9/16] rounded-lg border border-rose-800/30 bg-ink object-cover"
                             />
                             <p className="text-[10px] text-parchment/30 mt-1 truncate">
-                              {vid.duration || 5}s · Kling O3
+                              {vid.duration ? `${vid.duration}s` : "—"} · {vid.model_used.split("/").pop()}
                             </p>
                           </div>
                         ))}
@@ -1062,54 +1157,17 @@ export default function ScenesPage() {
             );
           })}
         </div>
-
-        {/* Custom Scenes section */}
-        {customSceneImages.length > 0 && (
-          <div className="mt-12">
-            <div className="flex items-center gap-3 mb-6">
-              <Plus size={18} className="text-emerald-400" />
-              <h2 className="font-display text-2xl font-bold text-parchment">
-                {t("custom_scenes")}
-              </h2>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-              {customSceneImages.map((img) => (
-                <div key={img.id} className="group relative">
-                  <button
-                    onClick={() => setExpandedImage(img.id)}
-                    className="w-full aspect-[9/16] rounded-lg overflow-hidden border-2 border-ink-muted hover:border-emerald-400/40 transition-all"
-                  >
-                    <img
-                      src={img.image_url}
-                      alt={img.scene_id}
-                      className="w-full h-full object-cover"
-                    />
-                  </button>
-                  <button
-                    onClick={() => deleteSceneImage(img.id)}
-                    className="absolute top-1.5 right-1.5 p-1 rounded-md bg-ink/80 text-red-400/70 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                  <p className="text-xs text-parchment/60 mt-1.5 truncate font-semibold">
-                    {img.scene_id}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </main>
 
       {/* Expanded image overlay */}
       {expandedImage &&
         (() => {
-          const img = sceneImages.find((i) => i.id === expandedImage);
+          const allImages = [...sceneImages, ...sceneComposites];
+          const img = allImages.find((i) => i.id === expandedImage);
           if (!img) return null;
-          const scene = pipeline?.scenes?.find((s) => s.id === img.scene_id);
-          const currentIdx = sceneImages.findIndex((i) => i.id === expandedImage);
+          const currentIdx = allImages.findIndex((i) => i.id === expandedImage);
           const hasPrev = currentIdx > 0;
-          const hasNext = currentIdx < sceneImages.length - 1;
+          const hasNext = currentIdx < allImages.length - 1;
 
           return (
             <div
@@ -1128,10 +1186,7 @@ export default function ScenesPage() {
               {hasPrev && (
                 <button
                   className="absolute left-4 top-1/2 -translate-y-1/2 p-2 rounded-full bg-ink-soft/80 text-parchment/60 hover:text-parchment hover:bg-ink-soft transition-colors"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setExpandedImage(sceneImages[currentIdx - 1].id);
-                  }}
+                  onClick={(e) => { e.stopPropagation(); setExpandedImage(allImages[currentIdx - 1].id); }}
                 >
                   <ChevronLeft size={28} />
                 </button>
@@ -1139,10 +1194,7 @@ export default function ScenesPage() {
               {hasNext && (
                 <button
                   className="absolute right-4 top-1/2 -translate-y-1/2 p-2 rounded-full bg-ink-soft/80 text-parchment/60 hover:text-parchment hover:bg-ink-soft transition-colors"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setExpandedImage(sceneImages[currentIdx + 1].id);
-                  }}
+                  onClick={(e) => { e.stopPropagation(); setExpandedImage(allImages[currentIdx + 1].id); }}
                 >
                   <ChevronRight size={28} />
                 </button>
@@ -1154,28 +1206,19 @@ export default function ScenesPage() {
               >
                 <img
                   src={img.image_url}
-                  alt={scene?.title || img.scene_id}
+                  alt={img.scene_id}
                   className="max-h-[75vh] max-w-full rounded-xl object-contain"
                 />
                 <div className="text-center">
-                  <p className="text-parchment/70 text-sm font-semibold">
-                    {scene?.title || img.scene_id}
-                  </p>
+                  <p className="text-parchment/70 text-sm font-semibold">{img.scene_id}</p>
                   <p className="text-parchment/30 text-xs mt-1">
-                    FLUX Kontext T2I
-                    {img.width && img.height && ` · ${img.width}x${img.height}`}
+                    {img.model_used.split("/").pop()}
+                    {"width" in img && img.width && "height" in img && img.height && ` · ${img.width}x${img.height}`}
                   </p>
                   <p className="text-parchment/20 text-[10px] mt-1 font-mono">
-                    {currentIdx + 1} / {sceneImages.length}
+                    {currentIdx + 1} / {allImages.length}
                   </p>
                 </div>
-                <button
-                  onClick={() => deleteSceneImage(img.id)}
-                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-red-900/20 border border-red-800/30 text-red-400 hover:bg-red-900/30 transition-colors"
-                >
-                  <Trash2 size={12} />
-                  {t("delete_image")}
-                </button>
               </div>
             </div>
           );
@@ -1232,10 +1275,10 @@ export default function ScenesPage() {
 
               <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-ink/40 border border-ink-muted/50">
                 <span className="text-[10px] text-parchment/30 uppercase tracking-wider font-semibold">
-                  Text-to-Image
+                  Nano Banana 2 Edit
                 </span>
                 <span className="text-[11px] text-parchment/50 font-mono">
-                  FLUX Kontext T2I · 9:16
+                  style ref · 9:16
                 </span>
               </div>
 
@@ -1249,11 +1292,7 @@ export default function ScenesPage() {
                     disabled={sceneAiHelpLoading}
                     className="flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-lg bg-violet-900/20 border border-violet-800/30 text-violet-400 hover:bg-violet-900/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {sceneAiHelpLoading ? (
-                      <Loader2 size={11} className="animate-spin" />
-                    ) : (
-                      <Wand2 size={11} />
-                    )}
+                    {sceneAiHelpLoading ? <Loader2 size={11} className="animate-spin" /> : <Wand2 size={11} />}
                     <span>{sceneAiHelpLoading ? t("ai_help_generating") : t("ai_help")}</span>
                   </button>
                 </div>
@@ -1277,15 +1316,11 @@ export default function ScenesPage() {
               </button>
               <button
                 onClick={handleGenerateCustomScene}
-                disabled={generatingCustomScene || !newSceneTitle.trim() || !newScenePrompt.trim()}
+                disabled={generatingCustomScene || !newSceneTitle.trim() || !newScenePrompt.trim() || !hasStyleImage}
                 className="flex items-center gap-2 px-5 py-2 rounded-xl bg-emerald-900/20 border border-emerald-800/30 text-emerald-400 hover:bg-emerald-900/30 text-sm disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {generatingCustomScene ? (
-                  <Loader2 size={14} className="animate-spin" />
-                ) : (
-                  <ImageIcon size={14} />
-                )}
-                <span>{generatingCustomScene ? t("generating") : t("generate_scene")}</span>
+                {generatingCustomScene ? <Loader2 size={14} className="animate-spin" /> : <ImageIcon size={14} />}
+                <span>{generatingCustomScene ? t("generating") : t("generate_background")}</span>
               </button>
             </div>
           </div>

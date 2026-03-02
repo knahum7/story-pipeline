@@ -1,18 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fal } from "@fal-ai/client";
 import { getSupabase } from "@/lib/supabase";
-import { SCENE_VIDEO_MODEL } from "@/lib/fal-models";
+import { VIDEO_AUDIO_MODEL, VIDEO_IMAGE_MODEL } from "@/lib/fal-models";
+import { muxAudioVideo } from "@/lib/mux-audio";
 
 fal.config({ credentials: () => process.env.FAL_KEY || "" });
 
-interface CharacterImage {
-  name: string;
-  imageUrl: string;
-}
+const FPS = 25;
 
 interface FalVideoResult {
   data: {
-    video?: { url: string; file_size?: number; file_name?: string; content_type?: string };
+    video?: { url: string; file_size?: number; file_name?: string; content_type?: string; duration?: number; num_frames?: number };
+    seed?: number;
   };
   requestId?: string;
 }
@@ -22,15 +21,17 @@ export async function POST(req: NextRequest) {
     const {
       pipelineId,
       sceneId,
-      sceneImageId,
-      sceneImageUrl,
+      compositeImageId,
+      compositeImageUrl,
       animationPrompt,
-      characterImages,
+      audioUrl,
+      audioDurationMs,
+      isNarration,
     } = await req.json();
 
-    if (!pipelineId || !sceneId || !sceneImageUrl || !animationPrompt) {
+    if (!pipelineId || !sceneId || !compositeImageUrl || !animationPrompt) {
       return NextResponse.json(
-        { error: "Missing required fields: pipelineId, sceneId, sceneImageUrl, animationPrompt" },
+        { error: "Missing required fields: pipelineId, sceneId, compositeImageUrl, animationPrompt" },
         { status: 400 }
       );
     }
@@ -44,36 +45,45 @@ export async function POST(req: NextRequest) {
 
     const supabase = getSupabase();
     const startTime = Date.now();
-    const chars: CharacterImage[] = characterImages || [];
+    const hasAudio = !!audioUrl;
 
-    const elements = chars.map((c) => ({
-      frontal_image_url: c.imageUrl,
-      reference_image_urls: [c.imageUrl],
-    }));
-
-    let prompt = animationPrompt;
-    chars.forEach((c, i) => {
-      const elementRef = `@Element${i + 1}`;
-      prompt = prompt.replace(new RegExp(c.name, "gi"), elementRef);
-    });
+    // Dialogue + audio → audio-to-video (lip sync)
+    // Narration + audio → image-to-video (clean motion) then FFmpeg mux
+    // No audio → image-to-video (default length)
+    const useAudioToVideo = hasAudio && !isNarration;
+    const model = useAudioToVideo ? VIDEO_AUDIO_MODEL : VIDEO_IMAGE_MODEL;
 
     console.log(
-      `[scenes-video] Generating video for ${sceneId} with ${chars.length} element(s), prompt: ${prompt.slice(0, 150)}...`
+      `[scenes-video] Generating video for ${sceneId} with ${model}` +
+        `${hasAudio ? (isNarration ? " (narration mux)" : " + audio") : ""}, prompt: ${animationPrompt.slice(0, 150)}...`
     );
 
     const input: Record<string, unknown> = {
-      prompt,
-      start_image_url: sceneImageUrl,
-      duration: "5",
-      aspect_ratio: "9:16",
+      prompt: animationPrompt,
+      image_url: compositeImageUrl,
+      video_size: { width: 720, height: 1280 },
+      use_multiscale: true,
+      fps: FPS,
+      guidance_scale: 3,
+      num_inference_steps: 40,
+      video_quality: "high",
+      video_output_type: "X264 (.mp4)",
+      enable_prompt_expansion: true,
     };
 
-    if (elements.length > 0) {
-      input.elements = elements;
+    if (useAudioToVideo) {
+      input.audio_url = audioUrl;
+      input.match_audio_length = true;
+    } else if (hasAudio && audioDurationMs) {
+      // Narration: match video length to audio duration
+      input.num_frames = Math.max(25, Math.ceil((audioDurationMs / 1000) * FPS));
+    } else {
+      input.num_frames = 121;
+      input.generate_audio = true;
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result = (await (fal as any).subscribe(SCENE_VIDEO_MODEL, { input })) as FalVideoResult;
+    const result = (await (fal as any).subscribe(model, { input })) as FalVideoResult;
 
     const video = result.data?.video;
     if (!video?.url) {
@@ -87,8 +97,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const videoDuration = video.duration ? Math.round(video.duration) : null;
+
     console.log(
-      `[scenes-video] fal.ai returned video in ${((Date.now() - startTime) / 1000).toFixed(1)}s`
+      `[scenes-video] fal.ai returned video in ${((Date.now() - startTime) / 1000).toFixed(1)}s${videoDuration ? ` — ${videoDuration}s` : ""}`
     );
 
     const videoResponse = await fetch(video.url);
@@ -99,12 +111,29 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const videoBuffer = await videoResponse.arrayBuffer();
+    let finalBuffer = await videoResponse.arrayBuffer();
+
+    // Narration scenes: mux narration audio into the generated video
+    if (isNarration && hasAudio) {
+      console.log(`[scenes-video] Muxing narration audio into video for ${sceneId}...`);
+      const audioResponse = await fetch(audioUrl);
+      if (!audioResponse.ok) {
+        return NextResponse.json(
+          { error: "Failed to download narration audio for muxing" },
+          { status: 502 }
+        );
+      }
+      const audioBuffer = await audioResponse.arrayBuffer();
+      const muxed = await muxAudioVideo(finalBuffer, audioBuffer);
+      finalBuffer = new Uint8Array(muxed).buffer as ArrayBuffer;
+      console.log(`[scenes-video] Muxing complete for ${sceneId}`);
+    }
+
     const storagePath = `${pipelineId}/${sceneId}/${Date.now()}.mp4`;
 
     const { error: uploadError } = await supabase.storage
       .from("videos")
-      .upload(storagePath, videoBuffer, {
+      .upload(storagePath, finalBuffer, {
         contentType: "video/mp4",
         upsert: false,
       });
@@ -126,11 +155,11 @@ export async function POST(req: NextRequest) {
       .insert({
         pipeline_id: pipelineId,
         scene_id: sceneId,
-        scene_image_id: sceneImageId || null,
+        composite_image_id: compositeImageId || null,
         prompt: animationPrompt,
-        model_used: SCENE_VIDEO_MODEL,
+        model_used: model,
         video_url: publicUrlData.publicUrl,
-        duration: 5,
+        duration: videoDuration,
         fal_request_id: result.requestId ?? null,
       })
       .select()

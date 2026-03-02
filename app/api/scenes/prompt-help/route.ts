@@ -7,25 +7,27 @@ const anthropic = new Anthropic({
 
 const SYSTEM_PROMPT = `You are a cinematic scene prompt engineer for AI image and video generation.
 
-Given a scene title, optional narration text, and character names, produce TWO prompts:
+Given a scene title, optional narration text, optional dialogue, and character names, produce TWO prompts:
 
-1. SCENE IMAGE PROMPT — a detailed prompt for generating ONLY the background, environment, and setting of the scene. DO NOT include any characters or people. Character portraits will be composited as separate elements during video generation. Think of this as a "set photo" before the actors walk on.
-   FORMAT: [setting/location], [environment details: furniture, objects, architecture, props], [time of day], [weather/atmosphere], [lighting: direction, quality, color temperature], [mood], [style: cinematic photorealistic], [quality: sharp focus, 8k, film grain, depth of field]
+1. SCENE IMAGE PROMPT — a detailed prompt for generating ONLY the background, environment, and setting of the scene. DO NOT include any characters or people. Characters will be composited into the background separately using their portrait images. Think of this as a "set photo" before the actors walk on.
+   FORMAT: [setting/location], [environment details: furniture, objects, architecture, props], [time of day], [weather/atmosphere], [lighting: direction, quality, color temperature], [mood]
    Frame for vertical 9:16 aspect ratio (tall, mobile-optimized).
+   Do NOT include style or quality descriptors — a style reference image handles visual consistency.
 
-2. ANIMATION PROMPT — a prompt describing the MOTION and action for a 5-second video clip using Kling AI reference-to-video. Reference characters by their full name (the system will map names to @Element references and composite their portraits into the scene).
-   FORMAT: Describe character movements, gestures, expression changes, camera motion (pan, zoom, dolly, truck), environmental motion (wind, rain, light changes). Keep it concise and action-focused.
+2. ANIMATION PROMPT — a prompt describing the MOTION and action for a video clip using LTX-2. The scene image will already contain characters composited in, so describe what happens during the clip. Only ONE character should be animated (the speaker in dialogue scenes, or the focal character in narration scenes).
+   FORMAT: Describe the animated character's movements, gestures, expression changes, lip sync (for dialogue), camera motion (pan, zoom, dolly, truck), environmental motion (wind, rain, light changes). Keep it concise and action-focused.
 
 RULES:
 - Output ONLY valid JSON with two keys: "sceneImagePrompt" and "animationPrompt". No markdown, no explanations.
 - CRITICAL: The sceneImagePrompt must NEVER contain characters, people, or human figures. Only environment and setting.
 - Be specific and visual. Avoid vague language.
 - Keep each prompt between 50-150 words.
-- The animation prompt should reference characters by full name and describe what happens during 5 seconds.`;
+- The animation prompt should reference the focal character by full name.
+- Only one character should be animated per scene.`;
 
 export async function POST(req: NextRequest) {
   try {
-    const { title, narration, characterNames } = await req.json();
+    const { title, narration, dialogue, characterNames } = await req.json();
 
     if (!title) {
       return NextResponse.json(
@@ -44,6 +46,9 @@ export async function POST(req: NextRequest) {
     let userMessage = `Scene title: ${title}`;
     if (narration) {
       userMessage += `\nNarration: ${narration}`;
+    }
+    if (dialogue) {
+      userMessage += `\nDialogue: ${dialogue}`;
     }
     if (characterNames?.length) {
       userMessage += `\nCharacters in scene: ${characterNames.join(", ")}`;

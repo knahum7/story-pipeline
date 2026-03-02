@@ -7,7 +7,6 @@ import {
   ArrowLeft,
   ChevronLeft,
   ChevronRight,
-  ChevronDown,
   Clock,
   Loader2,
   Sparkles,
@@ -62,8 +61,9 @@ export default function CharactersPage() {
 
   const [stylePrompt, setStylePrompt] = useState("");
   const [stylePromptSaved, setStylePromptSaved] = useState("");
-  const [styleExpanded, setStyleExpanded] = useState(false);
   const [styleSaving, setStyleSaving] = useState(false);
+  const [styleImageUrl, setStyleImageUrl] = useState("");
+  const [generatingStyle, setGeneratingStyle] = useState(false);
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [newCharName, setNewCharName] = useState("");
@@ -88,6 +88,7 @@ export default function CharactersPage() {
         setPipeline(pData.pipeline_data);
         setStylePrompt(pData.pipeline_data?.style_prompt || "");
         setStylePromptSaved(pData.pipeline_data?.style_prompt || "");
+        setStyleImageUrl(pData.pipeline_data?.style_image_url || "");
 
         const prompts: Record<string, string> = {};
         for (const c of pData.pipeline_data?.characters || []) {
@@ -351,6 +352,36 @@ export default function CharactersPage() {
     }
   }, [pipelineId, stylePrompt]);
 
+  const generateStyleImage = useCallback(async () => {
+    if (!stylePrompt.trim()) {
+      alert("Style prompt is required to generate a style image");
+      return;
+    }
+    setGeneratingStyle(true);
+    try {
+      if (stylePrompt !== stylePromptSaved) {
+        await saveStylePrompt();
+      }
+      const res = await fetch("/api/style-image/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pipelineId, stylePrompt: stylePrompt.trim() }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Failed" }));
+        throw new Error(err.error || "Failed to generate style image");
+      }
+      const { styleImageUrl: url } = await res.json();
+      setStyleImageUrl(url);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to generate style image");
+    } finally {
+      setGeneratingStyle(false);
+    }
+  }, [pipelineId, stylePrompt, stylePromptSaved, saveStylePrompt]);
+
+  const hasStyleImage = !!styleImageUrl;
+
   const customImages = images.filter((img) => {
     const pipelineCharIds = pipeline?.characters?.map((c) => c.id) || [];
     return !pipelineCharIds.includes(img.character_id);
@@ -503,7 +534,7 @@ export default function CharactersPage() {
 
             <button
               onClick={generateAllPortraits}
-              disabled={generatingAll || !pipeline.characters?.length}
+              disabled={generatingAll || !pipeline.characters?.length || !hasStyleImage}
               className="flex items-center gap-2 px-4 py-2 rounded-xl btn-primary text-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {generatingAll ? (
@@ -516,52 +547,88 @@ export default function CharactersPage() {
           </div>
         </div>
 
-        {/* Style Prompt */}
+        {/* Style Reference Image */}
         <div className="mb-6 bg-ink-soft border border-ink-muted rounded-2xl overflow-hidden">
-          <button
-            onClick={() => setStyleExpanded(!styleExpanded)}
-            className="w-full flex items-center justify-between px-6 py-3 hover:bg-ink/30 transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <Palette size={14} className="text-violet-400" />
-              <span className="text-sm font-semibold text-parchment/70">{t("style_prompt_label")}</span>
-              {stylePrompt && !styleExpanded && (
-                <span className="text-[10px] text-parchment/30 font-mono truncate max-w-[300px]">
-                  — {stylePrompt.slice(0, 60)}…
+          <div className="px-6 py-4 border-b border-ink-muted/50">
+            <div className="flex items-center gap-2 mb-1">
+              <Palette size={16} className="text-violet-400" />
+              <h3 className="text-sm font-semibold text-parchment/70">{t("style_image_label")}</h3>
+              {hasStyleImage && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-900/30 text-emerald-400 font-mono">
+                  {t("active")}
+                </span>
+              )}
+              {!hasStyleImage && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-900/30 text-red-400 font-mono">
+                  {t("required")}
                 </span>
               )}
             </div>
-            <ChevronDown
-              size={14}
-              className={`text-parchment/30 transition-transform ${styleExpanded ? "rotate-180" : ""}`}
-            />
-          </button>
-          {styleExpanded && (
-            <div className="px-6 pb-4 space-y-3">
-              <p className="text-[10px] text-parchment/30">
-                {t("style_prompt_desc")}
-              </p>
-              <textarea
-                value={stylePrompt}
-                onChange={(e) => setStylePrompt(e.target.value)}
-                rows={3}
-                placeholder={t("style_prompt_placeholder")}
-                className="w-full bg-ink/60 border border-violet-800/30 rounded-lg p-3 text-[11px] text-parchment/70 font-mono leading-relaxed resize-y focus:outline-none focus:border-violet-600/50 transition-colors placeholder:text-parchment/15"
-              />
-              {stylePrompt !== stylePromptSaved && (
-                <div className="flex justify-end">
+            <p className="text-[10px] text-parchment/30">{t("style_image_desc")}</p>
+          </div>
+
+          <div className="p-6 space-y-4">
+            {/* Current style image */}
+            {hasStyleImage && (
+              <div className="flex items-start gap-4">
+                <img
+                  src={styleImageUrl}
+                  alt="Style reference"
+                  className="w-24 h-24 rounded-lg border border-violet-800/30 object-cover shrink-0"
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] text-parchment/40 mb-1">{t("style_image_active_desc")}</p>
+                  <p className="text-[10px] text-parchment/20 font-mono truncate">{styleImageUrl}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Style prompt editor */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[10px] text-parchment/30 uppercase tracking-wider font-semibold">
+                  {t("style_prompt_label")}
+                </span>
+                {stylePrompt !== stylePromptSaved && (
                   <button
                     onClick={saveStylePrompt}
                     disabled={styleSaving}
-                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-violet-900/20 border border-violet-800/30 text-violet-400 hover:bg-violet-900/30 transition-colors disabled:opacity-50"
+                    className="flex items-center gap-1.5 text-[10px] px-2 py-0.5 rounded bg-violet-900/20 border border-violet-800/30 text-violet-400 hover:bg-violet-900/30 transition-colors disabled:opacity-50"
                   >
-                    {styleSaving ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />}
+                    {styleSaving ? <Loader2 size={9} className="animate-spin" /> : <Save size={9} />}
                     {styleSaving ? t("saving") : t("save")}
                   </button>
-                </div>
-              )}
+                )}
+              </div>
+              <textarea
+                value={stylePrompt}
+                onChange={(e) => setStylePrompt(e.target.value)}
+                rows={2}
+                placeholder={t("style_prompt_placeholder")}
+                className="w-full bg-ink/60 border border-violet-800/30 rounded-lg p-3 text-[11px] text-parchment/70 font-mono leading-relaxed resize-y focus:outline-none focus:border-violet-600/50 transition-colors placeholder:text-parchment/15"
+              />
             </div>
-          )}
+
+            {/* Generate button */}
+            <button
+              onClick={generateStyleImage}
+              disabled={generatingStyle || !stylePrompt.trim()}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm bg-violet-900/20 border border-violet-800/30 text-violet-400 hover:bg-violet-900/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed w-full justify-center"
+            >
+              {generatingStyle ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <Sparkles size={14} />
+              )}
+              <span>
+                {generatingStyle
+                  ? t("generating_style_image")
+                  : hasStyleImage
+                    ? t("regenerate_style_image")
+                    : t("generate_style_image")}
+              </span>
+            </button>
+          </div>
         </div>
 
         <div className="space-y-6">
@@ -599,7 +666,7 @@ export default function CharactersPage() {
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => generateImage(char)}
-                        disabled={isGen}
+                        disabled={isGen || !hasStyleImage}
                         className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                           charRefs[char.id]
                             ? "bg-violet-900/20 border border-violet-800/30 text-violet-400 hover:bg-violet-900/30"
@@ -708,7 +775,7 @@ export default function CharactersPage() {
                           </button>
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-[10px] text-violet-400 mb-1">FLUX Kontext I2I</p>
+                          <p className="text-[10px] text-violet-400 mb-1">+ Reference</p>
                           <p className="text-[10px] text-parchment/20 truncate">
                             {charRefs[char.id].file.name}
                           </p>
@@ -986,12 +1053,15 @@ export default function CharactersPage() {
               {/* Model info */}
               <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-ink/40 border border-ink-muted/50">
                 <span className="text-[10px] text-parchment/30 uppercase tracking-wider font-semibold">
-                  {hasReference ? "Image-to-Image" : "Text-to-Image"}
+                  Nano Banana 2 Edit
                 </span>
                 <span className="text-[11px] text-parchment/50 font-mono">
-                  FLUX Kontext {hasReference ? "I2I" : "T2I"}
+                  style ref{hasReference ? " + user ref" : ""}
                 </span>
               </div>
+              {!hasStyleImage && (
+                <p className="text-[10px] text-red-400/70">{t("style_image_required_msg")}</p>
+              )}
 
               {/* Prompt with AI Help */}
               <div>
@@ -1033,7 +1103,7 @@ export default function CharactersPage() {
               </button>
               <button
                 onClick={handleGenerateCustom}
-                disabled={generatingCustom || !newCharName.trim() || !newCharPrompt.trim()}
+                disabled={generatingCustom || !newCharName.trim() || !newCharPrompt.trim() || !hasStyleImage}
                 className="flex items-center gap-2 px-5 py-2 rounded-xl btn-primary text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {generatingCustom ? (

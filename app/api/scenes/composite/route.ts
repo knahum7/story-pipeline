@@ -19,11 +19,18 @@ interface FalResult {
 
 export async function POST(req: NextRequest) {
   try {
-    const { pipelineId, sceneId, prompt } = await req.json();
+    const {
+      pipelineId,
+      sceneId,
+      backgroundImageId,
+      backgroundImageUrl,
+      characterImageUrls,
+      compositePrompt,
+    } = await req.json();
 
-    if (!pipelineId || !sceneId || !prompt) {
+    if (!pipelineId || !sceneId || !backgroundImageUrl) {
       return NextResponse.json(
-        { error: "Missing required fields: pipelineId, sceneId, prompt" },
+        { error: "Missing required fields: pipelineId, sceneId, backgroundImageUrl" },
         { status: 400 }
       );
     }
@@ -48,20 +55,26 @@ export async function POST(req: NextRequest) {
 
     if (!styleImageUrl) {
       return NextResponse.json(
-        { error: "Style reference image is required. Please generate one first." },
+        { error: "Style reference image is required." },
         { status: 400 }
       );
     }
 
     const startTime = Date.now();
+    const charUrls: string[] = characterImageUrls || [];
+
+    const imageUrls = [styleImageUrl, backgroundImageUrl, ...charUrls];
+
+    const prompt = compositePrompt ||
+      "Place the characters naturally into the background scene. Maintain the exact background environment and lighting. Characters should be properly scaled and lit to match the scene.";
 
     console.log(
-      `[scenes] Generating background ${sceneId} with ${IMAGE_EDIT_MODEL}, prompt: ${prompt.slice(0, 150)}...`
+      `[composite] Compositing ${sceneId} with ${charUrls.length} character(s), prompt: ${prompt.slice(0, 150)}...`
     );
 
     const input: Record<string, unknown> = {
       prompt,
-      image_urls: [styleImageUrl],
+      image_urls: imageUrls,
       aspect_ratio: "9:16",
       num_images: 1,
       output_format: "png",
@@ -72,12 +85,9 @@ export async function POST(req: NextRequest) {
 
     const images = result.data?.images || [];
     if (!images.length || !images[0].url) {
-      console.error(
-        "[scenes] No image returned:",
-        JSON.stringify(result).slice(0, 500)
-      );
+      console.error("[composite] No image returned:", JSON.stringify(result).slice(0, 500));
       return NextResponse.json(
-        { error: "No image was generated. Try a different prompt." },
+        { error: "No composited image was generated." },
         { status: 502 }
       );
     }
@@ -88,33 +98,28 @@ export async function POST(req: NextRequest) {
     const seed = result.data?.seed != null ? String(result.data.seed) : null;
 
     console.log(
-      `[scenes] fal.ai returned image in ${((Date.now() - startTime) / 1000).toFixed(1)}s — ${imageWidth}x${imageHeight}`
+      `[composite] fal.ai returned in ${((Date.now() - startTime) / 1000).toFixed(1)}s — ${imageWidth}x${imageHeight}`
     );
 
     const imageResponse = await fetch(falImageUrl);
     if (!imageResponse.ok) {
       return NextResponse.json(
-        { error: "Failed to download generated image" },
+        { error: "Failed to download composited image" },
         { status: 502 }
       );
     }
 
     const imageBuffer = await imageResponse.arrayBuffer();
-    const contentType =
-      imageResponse.headers.get("content-type") || "image/png";
-    const ext = contentType.includes("png")
-      ? "png"
-      : contentType.includes("jpeg")
-        ? "jpg"
-        : "webp";
+    const contentType = imageResponse.headers.get("content-type") || "image/png";
+    const ext = contentType.includes("png") ? "png" : contentType.includes("jpeg") ? "jpg" : "webp";
 
-    const storagePath = `${pipelineId}/${sceneId}/${Date.now()}.${ext}`;
+    const storagePath = `${pipelineId}/${sceneId}/composite-${Date.now()}.${ext}`;
     const { error: uploadError } = await supabase.storage
-      .from("scenes")
+      .from("composites")
       .upload(storagePath, imageBuffer, { contentType, upsert: false });
 
     if (uploadError) {
-      console.error("[scenes] Upload error:", uploadError.message);
+      console.error("[composite] Upload error:", uploadError.message);
       return NextResponse.json(
         { error: `Storage upload failed: ${uploadError.message}` },
         { status: 500 }
@@ -122,14 +127,15 @@ export async function POST(req: NextRequest) {
     }
 
     const { data: publicUrlData } = supabase.storage
-      .from("scenes")
+      .from("composites")
       .getPublicUrl(storagePath);
 
     const { data: row, error: dbError } = await supabase
-      .from("scene_images")
+      .from("scene_composites")
       .insert({
         pipeline_id: pipelineId,
         scene_id: sceneId,
+        background_image_id: backgroundImageId || null,
         prompt,
         model_used: IMAGE_EDIT_MODEL,
         image_url: publicUrlData.publicUrl,
@@ -142,7 +148,7 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (dbError) {
-      console.error("[scenes] DB insert error:", dbError.message);
+      console.error("[composite] DB insert error:", dbError.message);
       return NextResponse.json(
         { error: `Database error: ${dbError.message}` },
         { status: 500 }
@@ -150,13 +156,13 @@ export async function POST(req: NextRequest) {
     }
 
     console.log(
-      `[scenes] Saved ${sceneId} — ${publicUrlData.publicUrl} (${((Date.now() - startTime) / 1000).toFixed(1)}s total)`
+      `[composite] Saved ${sceneId} composite — ${publicUrlData.publicUrl} (${((Date.now() - startTime) / 1000).toFixed(1)}s total)`
     );
 
     return NextResponse.json(row, { status: 201 });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
-    console.error("[scenes] Generate error:", message);
+    console.error("[composite] Generate error:", message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

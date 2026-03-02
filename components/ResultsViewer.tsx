@@ -98,7 +98,8 @@ function SceneCard({ scene, characters }: { scene: Scene; characters: Character[
       <div className="px-4 py-3 border-b border-ink-muted flex items-center justify-between">
         <div className="flex items-center gap-3">
           <span className="text-xs font-mono text-amber-film">{scene.id}</span>
-          <Pill text={`${scene.duration || 5}s`} color="blue" />
+          {scene.dialogue?.length > 0 && <Pill text="Dialogue" color="blue" />}
+          {scene.narration && !scene.dialogue?.length && <Pill text="Narration" color="green" />}
         </div>
       </div>
 

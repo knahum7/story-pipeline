@@ -63,13 +63,48 @@ CREATE TABLE IF NOT EXISTS "public"."pipelines" (
 ALTER TABLE "public"."pipelines" OWNER TO "postgres";
 
 
+CREATE TABLE IF NOT EXISTS "public"."scene_audio" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "pipeline_id" "uuid" NOT NULL,
+    "scene_id" "text" NOT NULL,
+    "character_id" "text",
+    "text" "text" NOT NULL,
+    "model_used" "text" NOT NULL,
+    "audio_url" "text" NOT NULL,
+    "duration_ms" integer,
+    "fal_request_id" "text",
+    "created_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."scene_audio" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."scene_composites" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "pipeline_id" "uuid" NOT NULL,
+    "scene_id" "text" NOT NULL,
+    "background_image_id" "uuid",
+    "prompt" "text" NOT NULL,
+    "model_used" "text" NOT NULL,
+    "image_url" "text" NOT NULL,
+    "width" integer,
+    "height" integer,
+    "seed" "text",
+    "fal_request_id" "text",
+    "created_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."scene_composites" OWNER TO "postgres";
+
+
 CREATE TABLE IF NOT EXISTS "public"."scene_images" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "pipeline_id" "uuid" NOT NULL,
     "scene_id" "text" NOT NULL,
     "prompt" "text" NOT NULL,
     "model_used" "text" NOT NULL,
-    "loras_used" "jsonb",
     "image_url" "text" NOT NULL,
     "width" integer,
     "height" integer,
@@ -86,7 +121,7 @@ CREATE TABLE IF NOT EXISTS "public"."scene_videos" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "pipeline_id" "uuid" NOT NULL,
     "scene_id" "text" NOT NULL,
-    "scene_image_id" "uuid",
+    "composite_image_id" "uuid",
     "prompt" "text" NOT NULL,
     "model_used" "text" NOT NULL,
     "video_url" "text" NOT NULL,
@@ -109,6 +144,16 @@ ALTER TABLE ONLY "public"."pipelines"
 
 
 
+ALTER TABLE ONLY "public"."scene_audio"
+    ADD CONSTRAINT "scene_audio_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."scene_composites"
+    ADD CONSTRAINT "scene_composites_pkey" PRIMARY KEY ("id");
+
+
+
 ALTER TABLE ONLY "public"."scene_images"
     ADD CONSTRAINT "scene_images_pkey" PRIMARY KEY ("id");
 
@@ -127,6 +172,14 @@ CREATE INDEX "idx_pipelines_created_at" ON "public"."pipelines" USING "btree" ("
 
 
 
+CREATE INDEX "idx_scene_audio_lookup" ON "public"."scene_audio" USING "btree" ("pipeline_id", "scene_id");
+
+
+
+CREATE INDEX "idx_scene_composites_lookup" ON "public"."scene_composites" USING "btree" ("pipeline_id", "scene_id");
+
+
+
 CREATE INDEX "idx_scene_images_lookup" ON "public"."scene_images" USING "btree" ("pipeline_id", "scene_id");
 
 
@@ -140,18 +193,33 @@ ALTER TABLE ONLY "public"."characters"
 
 
 
+ALTER TABLE ONLY "public"."scene_audio"
+    ADD CONSTRAINT "scene_audio_pipeline_id_fkey" FOREIGN KEY ("pipeline_id") REFERENCES "public"."pipelines"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."scene_composites"
+    ADD CONSTRAINT "scene_composites_background_image_id_fkey" FOREIGN KEY ("background_image_id") REFERENCES "public"."scene_images"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."scene_composites"
+    ADD CONSTRAINT "scene_composites_pipeline_id_fkey" FOREIGN KEY ("pipeline_id") REFERENCES "public"."pipelines"("id") ON DELETE CASCADE;
+
+
+
 ALTER TABLE ONLY "public"."scene_images"
     ADD CONSTRAINT "scene_images_pipeline_id_fkey" FOREIGN KEY ("pipeline_id") REFERENCES "public"."pipelines"("id") ON DELETE CASCADE;
 
 
 
 ALTER TABLE ONLY "public"."scene_videos"
-    ADD CONSTRAINT "scene_videos_pipeline_id_fkey" FOREIGN KEY ("pipeline_id") REFERENCES "public"."pipelines"("id") ON DELETE CASCADE;
+    ADD CONSTRAINT "scene_videos_composite_image_id_fkey" FOREIGN KEY ("composite_image_id") REFERENCES "public"."scene_composites"("id") ON DELETE SET NULL;
 
 
 
 ALTER TABLE ONLY "public"."scene_videos"
-    ADD CONSTRAINT "scene_videos_scene_image_id_fkey" FOREIGN KEY ("scene_image_id") REFERENCES "public"."scene_images"("id") ON DELETE SET NULL;
+    ADD CONSTRAINT "scene_videos_pipeline_id_fkey" FOREIGN KEY ("pipeline_id") REFERENCES "public"."pipelines"("id") ON DELETE CASCADE;
 
 
 
@@ -171,6 +239,18 @@ GRANT ALL ON TABLE "public"."characters" TO "service_role";
 GRANT ALL ON TABLE "public"."pipelines" TO "anon";
 GRANT ALL ON TABLE "public"."pipelines" TO "authenticated";
 GRANT ALL ON TABLE "public"."pipelines" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."scene_audio" TO "anon";
+GRANT ALL ON TABLE "public"."scene_audio" TO "authenticated";
+GRANT ALL ON TABLE "public"."scene_audio" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."scene_composites" TO "anon";
+GRANT ALL ON TABLE "public"."scene_composites" TO "authenticated";
+GRANT ALL ON TABLE "public"."scene_composites" TO "service_role";
 
 
 

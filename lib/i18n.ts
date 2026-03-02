@@ -197,18 +197,58 @@ const translations: Record<string, TranslationEntry> = {
   scene_description_placeholder: { en: "e.g. Two characters face off in a dark alley under rain", tr: "ör. İki karakter yağmur altında karanlık bir sokakta karşı karşıya" },
   scene_prompt_placeholder: { en: "Describe the scene you want to generate...", tr: "Oluşturmak istediğiniz sahneyi açıklayın..." },
 
-  // Style prompt
-  style_prompt_label: { en: "Visual Style", tr: "Görsel Stil" },
-  style_prompt_desc: {
-    en: "This style directive is prepended to every image prompt for consistent visuals across all characters and scenes.",
-    tr: "Bu stil yönergesi, tüm karakter ve sahnelerde tutarlı görseller için her görsel komutunun başına eklenir.",
+  // Style image
+  style_image_label: { en: "Style Reference Image", tr: "Stil Referans Görseli" },
+  style_image_desc: {
+    en: "A style reference image is included in all generation calls to ensure visual consistency. Generate one from the style prompt below.",
+    tr: "Görsel tutarlılık sağlamak için tüm oluşturma çağrılarına bir stil referans görseli eklenir. Aşağıdaki stil komutundan bir tane oluşturun.",
   },
+  style_image_active_desc: {
+    en: "This image is included as a reference in all generation calls for consistent visuals.",
+    tr: "Bu görsel, tutarlı görseller için tüm oluşturma çağrılarında referans olarak eklenir.",
+  },
+  active: { en: "Active", tr: "Aktif" },
+  required: { en: "Required", tr: "Gerekli" },
+  generate_style_image: { en: "Generate Style Image", tr: "Stil Görseli Oluştur" },
+  regenerate_style_image: { en: "Regenerate Style Image", tr: "Stil Görselini Yeniden Oluştur" },
+  generating_style_image: { en: "Generating style image...", tr: "Stil görseli oluşturuluyor..." },
+  style_image_required_msg: {
+    en: "A style reference image is required before generating characters or scenes.",
+    tr: "Karakter veya sahne oluşturmadan önce bir stil referans görseli gereklidir.",
+  },
+  go_to_characters: { en: "Go to Characters page", tr: "Karakterler sayfasına git" },
+
+  // Style prompt
+  style_prompt_label: { en: "Style Prompt", tr: "Stil Komutu" },
   style_prompt_placeholder: {
     en: "e.g. Dark moody watercolor painting, muted earth tones with deep indigo shadows, soft diffused lighting, visible brushstrokes, grain texture",
     tr: "ör. Koyu, kasvetli suluboya tablo, derin indigo gölgeli soluk toprak tonları, yumuşak dağınık aydınlatma, görünür fırça darbeleri, tane dokusu",
   },
   saving: { en: "Saving...", tr: "Kaydediliyor..." },
   save: { en: "Save", tr: "Kaydet" },
+
+  // Scene generation steps
+  step_background: { en: "Background", tr: "Arka Plan" },
+  step_composite: { en: "Composite Characters", tr: "Karakter Yerleştirme" },
+  step_audio: { en: "Speech Audio (TTS)", tr: "Konuşma Sesi (TTS)" },
+  step_narration_audio: { en: "Narration Audio (TTS)", tr: "Anlatı Sesi (TTS)" },
+  step_video: { en: "Video", tr: "Video" },
+  dialogue_label: { en: "Dialogue", tr: "Diyalog" },
+  narration_label: { en: "Narration", tr: "Anlatı" },
+  generate_background: { en: "Generate Background", tr: "Arka Plan Oluştur" },
+  generate_all_backgrounds: { en: "Generate All Backgrounds", tr: "Tüm Arka Planları Oluştur" },
+  select_background_first: { en: "Select a background image first", tr: "Önce bir arka plan görseli seçin" },
+  characters_to_composite: { en: "Characters", tr: "Karakterler" },
+  composite_characters: { en: "Composite Characters", tr: "Karakterleri Yerleştir" },
+  compositing: { en: "Compositing...", tr: "Yerleştiriliyor..." },
+  select_composite_first: { en: "Select a composited image first", tr: "Önce birleştirilmiş bir görsel seçin" },
+  generate_audio: { en: "Generate Audio", tr: "Ses Oluştur" },
+  generating_audio: { en: "Generating audio...", tr: "Ses oluşturuluyor..." },
+  generate_audio_first: { en: "Generate audio first before creating video", tr: "Video oluşturmadan önce ses oluşturun" },
+  dialogue_text: { en: "Dialogue", tr: "Diyalog" },
+  narration_text: { en: "Narration", tr: "Anlatı" },
+  narration_mux_info: { en: "Video + narration auto-combined", tr: "Video + anlatı otomatik birleştirilir" },
+  narration_mux_label: { en: "Audio Mux", tr: "Ses Birleştirme" },
 
   // Dynamic (with interpolation)
   pages_selected: { en: "page(s) selected", tr: "sayfa seçildi" },

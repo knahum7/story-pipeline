@@ -16,7 +16,6 @@ export interface Scene {
   id: string;
   title: string;
   characters: string[];
-  duration: number;
   scene_image_prompt: string;
   animation_prompt: string;
   dialogue: DialogueLine[];
@@ -37,6 +36,7 @@ export interface StoryInfo {
 export interface PipelineJSON {
   story: StoryInfo;
   style_prompt: string;
+  style_image_url: string;
   characters: Character[];
   scenes: Scene[];
 }

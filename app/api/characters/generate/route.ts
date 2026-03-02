@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fal } from "@fal-ai/client";
 import { getSupabase } from "@/lib/supabase";
-import { getCharModel, CHAR_I2I_MODEL } from "@/lib/fal-models";
+import { IMAGE_EDIT_MODEL } from "@/lib/fal-models";
 
 fal.config({ credentials: () => process.env.FAL_KEY || "" });
 
@@ -41,9 +41,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const hasReference = !!referenceImageBase64;
-    const model = getCharModel(hasReference);
-
     const supabase = getSupabase();
 
     const { data: pipelineRow } = await supabase
@@ -51,15 +48,26 @@ export async function POST(req: NextRequest) {
       .select("pipeline_data")
       .eq("id", pipelineId)
       .single();
-    const stylePrompt = (pipelineRow?.pipeline_data as Record<string, unknown>)?.style_prompt as string || "";
-    const fullPrompt = stylePrompt ? `${stylePrompt}. ${prompt}` : prompt;
+
+    const pipelineData = pipelineRow?.pipeline_data as Record<string, unknown> | null;
+    const styleImageUrl = (pipelineData?.style_image_url as string) || "";
+
+    if (!styleImageUrl) {
+      return NextResponse.json(
+        { error: "Style reference image is required. Please generate one first." },
+        { status: 400 }
+      );
+    }
 
     const startTime = Date.now();
+    const hasReference = !!referenceImageBase64;
+
     console.log(
-      `[characters] Generating portrait for "${name}" (${characterId}) with ${model}${hasReference ? " + reference" : ""}${stylePrompt ? " + style_prompt" : ""}`
+      `[characters] Generating portrait for "${name}" (${characterId}) with ${IMAGE_EDIT_MODEL}${hasReference ? " + reference" : ""}`
     );
 
-    let referenceUrl: string | null = null;
+    const imageUrls: string[] = [styleImageUrl];
+
     if (hasReference) {
       const refExt = (referenceContentType || "image/png").includes("jpeg") ? "jpg"
         : (referenceContentType || "image/png").includes("webp") ? "webp" : "png";
@@ -84,22 +92,19 @@ export async function POST(req: NextRequest) {
       const { data: refPublicUrl } = supabase.storage
         .from("characters")
         .getPublicUrl(refPath);
-      referenceUrl = refPublicUrl.publicUrl;
+      imageUrls.push(refPublicUrl.publicUrl);
     }
 
     const input: Record<string, unknown> = {
-      prompt: fullPrompt,
+      prompt,
+      image_urls: imageUrls,
       aspect_ratio: "3:4",
       num_images: 1,
       output_format: "png",
     };
 
-    if (referenceUrl && model === CHAR_I2I_MODEL) {
-      input.image_url = referenceUrl;
-    }
-
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result = (await (fal as any).subscribe(model, { input })) as FalSubscribeResult;
+    const result = (await (fal as any).subscribe(IMAGE_EDIT_MODEL, { input })) as FalSubscribeResult;
 
     const images = result.data?.images || [];
     if (!images.length || !images[0].url) {
@@ -160,8 +165,8 @@ export async function POST(req: NextRequest) {
         pipeline_id: pipelineId,
         character_id: characterId,
         name,
-        prompt: fullPrompt,
-        model_used: model,
+        prompt,
+        model_used: IMAGE_EDIT_MODEL,
         image_url: imageUrl,
         fal_request_id: result.requestId ?? null,
         width: imageWidth,
