@@ -6,7 +6,7 @@ PIPELINE OVERVIEW — understand what happens to each field you produce:
 3. scene_image_prompt → generates a BACKGROUND-ONLY IMAGE via image-to-image (Nano Banana 2 Edit) using the style image as reference. This is a "set photo" with NO people in it.
 4. The background image + character portraits are COMPOSITED together into a single frame via image-to-image (Nano Banana 2 Edit). The animation_prompt is used to guide character placement.
 5. dialogue lines or narration text → converted to AUDIO via text-to-speech (MiniMax TTS). This determines the video duration.
-6. animation_prompt → drives VIDEO GENERATION from the composited frame via LTX-2. For dialogue scenes, LTX-2 Audio-to-Video syncs lip movement to the speech audio. For narration scenes, LTX-2 Image-to-Video generates clean motion, then narration audio is muxed in.
+6. animation_prompt → drives VIDEO GENERATION from the composited frame via LTX-2 Audio-to-Video. The audio (dialogue or narration) is baked into the video. For dialogue scenes, the model syncs lip movement to speech. For narration scenes, the audio drives ambient motion pacing — NO lip sync occurs because the prompt specifies no one is speaking.
 
 GLOBAL RULES:
 1. NEVER summarize vaguely. Always extract specific visual details from the text.
@@ -25,17 +25,21 @@ Fields: title, author, source, genre, tone, theme, era, art_style_direction.
 ─────────────────────────────────────────────
 STYLE_PROMPT (string)
 ─────────────────────────────────────────────
-This prompt generates a STYLE REFERENCE IMAGE via text-to-image. The resulting image is included as a visual reference in every subsequent image generation call to ensure a consistent look.
+This prompt generates a STYLE REFERENCE IMAGE via text-to-image. The resulting image is included as a visual reference in ALL subsequent image generation calls to ensure consistent visual style across characters and scenes.
 
-Because it goes through a T2I model, write it as a CONCRETE VISUAL SCENE that demonstrates the desired art style — not abstract keywords. The model needs something to render.
+CRITICAL: The style image must be an ABSTRACT STYLE SWATCH — a texture/color/mood sample that defines the visual language. It must NEVER contain people, characters, figures, silhouettes, faces, or recognizable objects from the story. Think of it as a painter's palette and texture sample, NOT a scene.
 
-FORMAT: Describe a simple, representative scene (an empty environment or atmospheric vista) that embodies the story's visual world. Include: visual medium, color palette, lighting style, texture, mood, and a concrete setting.
+FORMAT: Describe an abstract visual texture that demonstrates the art medium, color palette, lighting quality, and surface texture. Include: rendering medium, color swatches/tones, lighting quality, brush/texture treatment, surface material, mood/atmosphere.
 
-GOOD: "An empty cobblestone alley at twilight, dark moody watercolor style, muted earth tones with deep indigo shadows, puddles reflecting amber streetlamp light, soft diffused atmospheric glow, visible wet-on-wet brushstrokes, melancholic grain texture"
+GOOD: "Abstract watercolor texture on rough cold-press paper, warm ochre and sepia tones bleeding into deep indigo shadow pools, soft diffused golden light wash, visible wet-on-wet brushstrokes with salt-bloom effects, weathered parchment grain, melancholic earth-toned palette with amber highlights"
 
-GOOD: "A sun-drenched meadow with wildflowers, vibrant cel-shaded anime style, bold saturated greens and golds, clean sharp outlines, dramatic rim lighting from low sun, Studio Ghibli-inspired environmental detail, soft lens flare"
+GOOD: "Cel-shaded flat color blocks, bold saturated palette of emerald green, gold, and sky blue, clean sharp ink outlines on white, dramatic rim-light gradient from warm orange to cool violet, smooth matte finish, Studio Ghibli-inspired color harmony"
 
-BAD: "Dark moody watercolor painting, muted tones" — too abstract, gives the model nothing to render.
+GOOD: "Oil paint impasto texture, thick visible brushstrokes on canvas weave, muted palette of slate gray, burnt umber, and dusty rose, chiaroscuro lighting with a single warm source, cracked varnish patina, classical painterly atmosphere"
+
+BAD: "A kitchen interior at dawn, watercolor style" — contains a recognizable scene. The model will render a kitchen with objects and potentially people.
+
+BAD: "Dark moody watercolor painting" — too short, too abstract. Not enough for the model to render a usable texture.
 
 Length: 30-60 words. Because the resulting style image is included in every generation call, DO NOT repeat style or quality descriptors in image_generation_prompt or scene_image_prompt fields.
 
@@ -90,6 +94,7 @@ RULES:
 - Leave visual space in the mid-ground where characters will be placed — don't fill the entire frame with objects or tight close-ups of surfaces.
 - Match the lighting to what the animation_prompt describes (if characters are near a window, light the scene from that direction).
 - DO NOT include style or quality descriptors — those come from the style reference image.
+- NEVER write "Same..." or refer to a previous scene's background. Each scene_image_prompt is sent to a SEPARATE API call with NO memory of previous scenes. ALWAYS write the FULL, self-contained environment description even if the location hasn't changed. Copy the description verbatim if needed.
 
 EXAMPLE: "Cramped kitchen interior, vodka bottles on worn formica counter, swayback wooden ladder propped against cabinets, small window with yellowed curtains at upper right, scuffed linoleum floor with clear space in center, harsh fluorescent overhead light casting sharp shadows, working-class apartment, evening"
 
@@ -103,7 +108,7 @@ FORMAT — structure it in this exact order:
 
 FOR DIALOGUE SCENES: The speaking character is animated with lip sync. Describe their speaking gestures, facial expressions, and body language. Other characters remain mostly still or react subtly.
 
-FOR NARRATION SCENES: No character is speaking. Describe ambient motion — subtle body language, environmental changes (wind, light shifts), and camera movement. Keep it atmospheric.
+FOR NARRATION SCENES: No character is speaking — the narration audio plays as voiceover while the video shows ambient motion. ALWAYS start with "No characters are speaking." then describe subtle body language, environmental changes (wind, light shifts), and camera movement. This instruction prevents the video model from generating unwanted lip-sync movements.
 
 ALWAYS reference characters by their FULL NAME (not char_01).
 
@@ -147,9 +152,9 @@ CRITICAL SCENE RULES
 
 7. SCENE COUNT — produce enough scenes to faithfully cover the ENTIRE story. Guideline: approximately 4-6 scenes per page of source material. A 15-page story should yield roughly 60-90 scenes. Do NOT summarize or skip sections. Every significant beat, dialogue exchange, transition, and moment must have its own scene. If in doubt, create MORE scenes rather than fewer.
 
-8. SCENE CONTINUITY — when splitting a conversation or long passage into multiple scenes, keep the same scene_image_prompt (same background) and adjust the animation_prompt to show progression. Only change the background when the story's location actually changes.
+8. SCENE CONTINUITY — when splitting a conversation or long passage into multiple scenes at the same location, COPY the full scene_image_prompt verbatim (do NOT write "Same..." — each prompt is processed independently with no memory). Only change the background description when the story's location actually changes. Adjust the animation_prompt to show progression.
 
-9. NO DURATION FIELD — scenes do not have a fixed duration. Video length is determined automatically: dialogue scenes match TTS audio length, narration scenes match narration audio length, silent scenes default to ~5 seconds.`;
+9. NO DURATION FIELD — scenes do not have a fixed duration. Video length is determined automatically: dialogue and narration scenes match their TTS audio length, silent scenes default to ~5 seconds.`;
 
 export const buildUserPrompt = (storyText: string): string => {
   return `Parse the following story into the animation pipeline JSON format as instructed:\n\n${storyText}`;

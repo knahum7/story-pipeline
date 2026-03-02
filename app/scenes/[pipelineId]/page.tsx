@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { useLanguage } from "@/lib/language-context";
 import { PipelineJSON, Scene } from "@/types/pipeline";
+import { getCharacterVoiceId } from "@/lib/fal-models";
 
 interface SceneImage {
   id: string;
@@ -360,6 +361,15 @@ export default function ScenesPage() {
         : scene.narration;
       const speakingCharId = hasDialogue ? scene.dialogue[0]?.character : null;
 
+      // Resolve voice: character index → consistent voice_id, or null for narrator
+      let voiceId: string | null = null;
+      if (speakingCharId && allCharacters.length > 0) {
+        const charIndex = allCharacters.findIndex((c) => c.id === speakingCharId);
+        if (charIndex >= 0) {
+          voiceId = getCharacterVoiceId(charIndex);
+        }
+      }
+
       setGeneratingAudio((prev) => ({ ...prev, [scene.id]: true }));
       try {
         const res = await fetch("/api/scenes/generate-audio", {
@@ -370,6 +380,7 @@ export default function ScenesPage() {
             sceneId: scene.id,
             characterId: speakingCharId,
             text,
+            voiceId,
           }),
         });
         if (!res.ok) {
@@ -384,7 +395,7 @@ export default function ScenesPage() {
         setGeneratingAudio((prev) => ({ ...prev, [scene.id]: false }));
       }
     },
-    [pipelineId, t]
+    [pipelineId, allCharacters, t]
   );
 
   const generateVideo = useCallback(
@@ -424,8 +435,6 @@ export default function ScenesPage() {
             compositeImageUrl: selectedComp.image_url,
             animationPrompt: animPrompt,
             audioUrl: latestAudio?.audio_url || null,
-            audioDurationMs: latestAudio?.duration_ms || null,
-            isNarration: hasNarration && !hasDialogue,
           }),
         });
         if (!res.ok) {
@@ -1092,8 +1101,7 @@ export default function ScenesPage() {
                         {t("step_video")}
                       </span>
                       <span className="text-[10px] text-parchment/20 font-mono">
-                        {hasDialogue ? "LTX-2 Audio-to-Video" : "LTX-2 Image-to-Video"}
-                        {!hasDialogue && !!scene.narration && ` + ${t("narration_mux_label")}`}
+                        {(hasDialogue || !!scene.narration) ? "LTX-2 Audio-to-Video" : "LTX-2 Image-to-Video"}
                       </span>
                     </div>
 

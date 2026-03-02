@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fal } from "@fal-ai/client";
 import { getSupabase } from "@/lib/supabase";
-import { TTS_MODEL } from "@/lib/fal-models";
+import { TTS_MODEL, NARRATOR_VOICE_ID } from "@/lib/fal-models";
 
 fal.config({ credentials: () => process.env.FAL_KEY || "" });
 
@@ -15,7 +15,7 @@ interface FalTTSResult {
 
 export async function POST(req: NextRequest) {
   try {
-    const { pipelineId, sceneId, characterId, text } = await req.json();
+    const { pipelineId, sceneId, characterId, text, voiceId } = await req.json();
 
     if (!pipelineId || !sceneId || !text) {
       return NextResponse.json(
@@ -34,13 +34,19 @@ export async function POST(req: NextRequest) {
     const supabase = getSupabase();
     const startTime = Date.now();
 
+    const resolvedVoiceId = voiceId || (characterId ? undefined : NARRATOR_VOICE_ID);
+
     console.log(
-      `[scene-audio] Generating TTS for ${sceneId}${characterId ? ` (${characterId})` : ""}, text: "${text.slice(0, 80)}..."`
+      `[scene-audio] Generating TTS for ${sceneId}${characterId ? ` (${characterId})` : " (narrator)"}, voice: ${resolvedVoiceId || "default"}, text: "${text.slice(0, 80)}..."`
     );
 
     const input: Record<string, unknown> = {
       prompt: text,
     };
+
+    if (resolvedVoiceId) {
+      input.voice_setting = { voice_id: resolvedVoiceId };
+    }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = (await (fal as any).subscribe(TTS_MODEL, { input })) as FalTTSResult;

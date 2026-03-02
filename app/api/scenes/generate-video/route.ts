@@ -2,11 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { fal } from "@fal-ai/client";
 import { getSupabase } from "@/lib/supabase";
 import { VIDEO_AUDIO_MODEL, VIDEO_IMAGE_MODEL } from "@/lib/fal-models";
-import { muxAudioVideo } from "@/lib/mux-audio";
 
 fal.config({ credentials: () => process.env.FAL_KEY || "" });
-
-const FPS = 25;
 
 interface FalVideoResult {
   data: {
@@ -25,8 +22,6 @@ export async function POST(req: NextRequest) {
       compositeImageUrl,
       animationPrompt,
       audioUrl,
-      audioDurationMs,
-      isNarration,
     } = await req.json();
 
     if (!pipelineId || !sceneId || !compositeImageUrl || !animationPrompt) {
@@ -47,15 +42,12 @@ export async function POST(req: NextRequest) {
     const startTime = Date.now();
     const hasAudio = !!audioUrl;
 
-    // Dialogue + audio → audio-to-video (lip sync)
-    // Narration + audio → image-to-video (clean motion) then FFmpeg mux
-    // No audio → image-to-video (default length)
-    const useAudioToVideo = hasAudio && !isNarration;
-    const model = useAudioToVideo ? VIDEO_AUDIO_MODEL : VIDEO_IMAGE_MODEL;
+    // Audio present → audio-to-video (handles both dialogue lip-sync and narration ambient)
+    // No audio → image-to-video (silent/ambient scenes)
+    const model = hasAudio ? VIDEO_AUDIO_MODEL : VIDEO_IMAGE_MODEL;
 
     console.log(
-      `[scenes-video] Generating video for ${sceneId} with ${model}` +
-        `${hasAudio ? (isNarration ? " (narration mux)" : " + audio") : ""}, prompt: ${animationPrompt.slice(0, 150)}...`
+      `[scenes-video] Generating video for ${sceneId} with ${model}${hasAudio ? " + audio" : ""}, prompt: ${animationPrompt.slice(0, 150)}...`
     );
 
     const input: Record<string, unknown> = {
@@ -63,7 +55,7 @@ export async function POST(req: NextRequest) {
       image_url: compositeImageUrl,
       video_size: { width: 720, height: 1280 },
       use_multiscale: true,
-      fps: FPS,
+      fps: 25,
       guidance_scale: 3,
       num_inference_steps: 40,
       video_quality: "high",
@@ -71,12 +63,9 @@ export async function POST(req: NextRequest) {
       enable_prompt_expansion: true,
     };
 
-    if (useAudioToVideo) {
+    if (hasAudio) {
       input.audio_url = audioUrl;
       input.match_audio_length = true;
-    } else if (hasAudio && audioDurationMs) {
-      // Narration: match video length to audio duration
-      input.num_frames = Math.max(25, Math.ceil((audioDurationMs / 1000) * FPS));
     } else {
       input.num_frames = 121;
       input.generate_audio = true;
@@ -111,29 +100,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    let finalBuffer = await videoResponse.arrayBuffer();
-
-    // Narration scenes: mux narration audio into the generated video
-    if (isNarration && hasAudio) {
-      console.log(`[scenes-video] Muxing narration audio into video for ${sceneId}...`);
-      const audioResponse = await fetch(audioUrl);
-      if (!audioResponse.ok) {
-        return NextResponse.json(
-          { error: "Failed to download narration audio for muxing" },
-          { status: 502 }
-        );
-      }
-      const audioBuffer = await audioResponse.arrayBuffer();
-      const muxed = await muxAudioVideo(finalBuffer, audioBuffer);
-      finalBuffer = new Uint8Array(muxed).buffer as ArrayBuffer;
-      console.log(`[scenes-video] Muxing complete for ${sceneId}`);
-    }
-
+    const videoBuffer = await videoResponse.arrayBuffer();
     const storagePath = `${pipelineId}/${sceneId}/${Date.now()}.mp4`;
 
     const { error: uploadError } = await supabase.storage
       .from("videos")
-      .upload(storagePath, finalBuffer, {
+      .upload(storagePath, videoBuffer, {
         contentType: "video/mp4",
         upsert: false,
       });

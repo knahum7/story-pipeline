@@ -346,15 +346,15 @@ export default function CharactersPage() {
       if (!res.ok) throw new Error("Failed to save");
       setStylePromptSaved(stylePrompt);
     } catch {
-      alert("Failed to save style prompt");
+      alert(t("style_prompt_save_failed"));
     } finally {
       setStyleSaving(false);
     }
-  }, [pipelineId, stylePrompt]);
+  }, [pipelineId, stylePrompt, t]);
 
   const generateStyleImage = useCallback(async () => {
     if (!stylePrompt.trim()) {
-      alert("Style prompt is required to generate a style image");
+      alert(t("style_prompt_required"));
       return;
     }
     setGeneratingStyle(true);
