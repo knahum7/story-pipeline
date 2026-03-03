@@ -472,13 +472,31 @@ export default function ScenesPage() {
 
   const generateVideo = useCallback(
     async (scene: Scene) => {
-      const selectedCompId = selectedCompositePerScene[scene.id];
-      if (!selectedCompId) {
-        alert(t("select_composite_first"));
-        return;
+      const hasCharsInScene = (scene.characters?.length || 0) > 0;
+
+      let imageUrl: string;
+      let imageId: string | null = null;
+
+      if (hasCharsInScene) {
+        const compId = selectedCompositePerScene[scene.id];
+        if (!compId) {
+          alert(t("select_composite_first"));
+          return;
+        }
+        const comp = sceneComposites.find((c) => c.id === compId);
+        if (!comp) return;
+        imageUrl = comp.image_url;
+        imageId = compId;
+      } else {
+        const bgId = selectedImagePerScene[scene.id];
+        if (!bgId) {
+          alert(t("select_background_first"));
+          return;
+        }
+        const bg = sceneImages.find((i) => i.id === bgId);
+        if (!bg) return;
+        imageUrl = bg.image_url;
       }
-      const selectedComp = sceneComposites.find((c) => c.id === selectedCompId);
-      if (!selectedComp) return;
 
       const animPrompt = editedAnimPrompts[scene.id] || scene.animation_prompt;
       const hasDialogue = (scene.dialogue?.length || 0) > 0;
@@ -503,8 +521,8 @@ export default function ScenesPage() {
           body: JSON.stringify({
             pipelineId,
             sceneId: scene.id,
-            compositeImageId: selectedCompId,
-            compositeImageUrl: selectedComp.image_url,
+            compositeImageId: imageId,
+            compositeImageUrl: imageUrl,
             animationPrompt: animPrompt,
             audioUrl: latestAudio?.audio_url || null,
           }),
@@ -521,7 +539,7 @@ export default function ScenesPage() {
         setGeneratingVideo((prev) => ({ ...prev, [scene.id]: false }));
       }
     },
-    [pipelineId, selectedCompositePerScene, sceneComposites, editedAnimPrompts, sceneAudioList, t]
+    [pipelineId, selectedCompositePerScene, sceneComposites, selectedImagePerScene, sceneImages, editedAnimPrompts, sceneAudioList, t]
   );
 
   const generateAllScenes = useCallback(async () => {
@@ -1003,6 +1021,9 @@ export default function ScenesPage() {
             const selectedCompId = selectedCompositePerScene[scene.id];
             const hasDialogue = (scene.dialogue?.length || 0) > 0;
             const hasChars = (scene.characters?.length || 0) > 0;
+            const imageReady = hasChars ? !!selectedCompId : !!selectedBgId;
+            const audioStepNum = hasChars ? 3 : 2;
+            const videoStepNum = (hasDialogue || !!scene.narration) ? audioStepNum + 1 : audioStepNum;
             const sceneSet = scene.set_id ? allSets.find((s) => s.id === scene.set_id) : null;
             const hasSetImage = !!sceneSet?.set_image_url;
 
@@ -1186,7 +1207,8 @@ export default function ScenesPage() {
                     )}
                   </div>
 
-                  {/* Step 2: Composite */}
+                  {/* Step 2: Composite (only for scenes with characters) */}
+                  {hasChars && (
                   <div className={`border-t border-ink-muted/30 pt-5 ${!selectedBgId ? "opacity-40 pointer-events-none" : ""}`}>
                     <div className="flex items-center gap-2 mb-3">
                       <span className="flex items-center justify-center w-5 h-5 rounded-full bg-amber-900/30 text-amber-400 text-[10px] font-bold">2</span>
@@ -1246,12 +1268,13 @@ export default function ScenesPage() {
                       </div>
                     )}
                   </div>
+                  )}
 
-                  {/* Step 3: Audio (dialogue and narration scenes) */}
+                  {/* Step Audio (dialogue and narration scenes) */}
                   {(hasDialogue || !!scene.narration) && (
-                    <div className={`border-t border-ink-muted/30 pt-5 ${!selectedCompId ? "opacity-40 pointer-events-none" : ""}`}>
+                    <div className={`border-t border-ink-muted/30 pt-5 ${!imageReady ? "opacity-40 pointer-events-none" : ""}`}>
                       <div className="flex items-center gap-2 mb-3">
-                        <span className="flex items-center justify-center w-5 h-5 rounded-full bg-violet-900/30 text-violet-400 text-[10px] font-bold">3</span>
+                        <span className="flex items-center justify-center w-5 h-5 rounded-full bg-violet-900/30 text-violet-400 text-[10px] font-bold">{audioStepNum}</span>
                         <span className="text-[10px] text-parchment/30 uppercase tracking-wider font-semibold">
                           {hasDialogue ? t("step_audio") : t("step_narration_audio")}
                         </span>
@@ -1284,7 +1307,7 @@ export default function ScenesPage() {
 
                       <button
                         onClick={() => generateAudio(scene)}
-                        disabled={isAudioGen || !selectedCompId}
+                        disabled={isAudioGen || !imageReady}
                         className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed mb-3 bg-violet-900/20 border border-violet-800/30 text-violet-400 hover:bg-violet-900/30"
                       >
                         {isAudioGen ? <Loader2 size={11} className="animate-spin" /> : <Volume2 size={11} />}
@@ -1306,11 +1329,11 @@ export default function ScenesPage() {
                     </div>
                   )}
 
-                  {/* Step 4: Video */}
-                  <div className={`border-t border-ink-muted/30 pt-5 ${!selectedCompId ? "opacity-40 pointer-events-none" : ""}`}>
+                  {/* Step Video */}
+                  <div className={`border-t border-ink-muted/30 pt-5 ${!imageReady ? "opacity-40 pointer-events-none" : ""}`}>
                     <div className="flex items-center gap-2 mb-3">
                       <span className="flex items-center justify-center w-5 h-5 rounded-full bg-rose-900/30 text-rose-400 text-[10px] font-bold">
-                        {(hasDialogue || !!scene.narration) ? "4" : "3"}
+                        {videoStepNum}
                       </span>
                       <span className="text-[10px] text-parchment/30 uppercase tracking-wider font-semibold">
                         {t("step_video")}
@@ -1351,7 +1374,7 @@ export default function ScenesPage() {
 
                     <button
                       onClick={() => generateVideo(scene)}
-                      disabled={isVidGen || !selectedCompId || ((hasDialogue || !!scene.narration) && audioItems.length === 0)}
+                      disabled={isVidGen || !imageReady || ((hasDialogue || !!scene.narration) && audioItems.length === 0)}
                       className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed mb-3 bg-rose-900/20 border border-rose-800/30 text-rose-400 hover:bg-rose-900/30"
                     >
                       {isVidGen ? <Loader2 size={11} className="animate-spin" /> : <Play size={11} />}
