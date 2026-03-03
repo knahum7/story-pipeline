@@ -60,6 +60,50 @@ const SUGGESTIVE_MINOR_PATTERNS: [RegExp, string][] = [
 
 const PEOPLE_WORDS_REGEX = /\b(audience members?|attendees?|well-?wishers?|servers?|waiters?|waitress(?:es)?|patrons?|pedestrians?|passersby|bystanders?|crowd(?:ed|s)?|people|figures?|silhouettes?|strangers?|onlookers?|spectators?|visitors?|guests?|theatergoers?|theater people|professionals?|actors?|diners?|shoppers?|commuters?|couples?|families|children|men|women)\b/i;
 
+const PEOPLE_WORD_REPLACEMENTS: [RegExp, string][] = [
+  [/\bcrowded\b/gi, "densely furnished"],
+  [/\bcrowds?\b/gi, ""],
+  [/\baudience members?\b/gi, ""],
+  [/\battendees?\b/gi, ""],
+  [/\bwell-?wishers?\b/gi, ""],
+  [/\bservers?\b/gi, ""],
+  [/\bwaiters?\b/gi, ""],
+  [/\bwaitress(?:es)?\b/gi, ""],
+  [/\bpatrons?\b/gi, ""],
+  [/\bpedestrians?\b/gi, ""],
+  [/\bpassersby\b/gi, ""],
+  [/\bbystanders?\b/gi, ""],
+  [/\bpeople\b/gi, ""],
+  [/\bfigures?\b/gi, ""],
+  [/\bsilhouettes?\b/gi, ""],
+  [/\bstrangers?\b/gi, ""],
+  [/\bonlookers?\b/gi, ""],
+  [/\bspectators?\b/gi, ""],
+  [/\bvisitors?\b/gi, ""],
+  [/\bguests?\b/gi, ""],
+  [/\btheatergoers?\b/gi, ""],
+  [/\btheater people\b/gi, ""],
+  [/\bprofessionals?\b/gi, ""],
+  [/\bactors?\b/gi, ""],
+  [/\bdiners?\b/gi, ""],
+  [/\bshoppers?\b/gi, ""],
+  [/\bcommuters?\b/gi, ""],
+  [/\bcouples?\b/gi, ""],
+  [/\bfamilies\b/gi, ""],
+  [/\bchildren\b/gi, ""],
+  [/\bmen\b/gi, ""],
+  [/\bwomen\b/gi, ""],
+  [/\bmilling\b/gi, "open"],
+];
+
+function stripPeopleWords(text: string): string {
+  let result = text;
+  for (const [pattern, replacement] of PEOPLE_WORD_REPLACEMENTS) {
+    result = result.replace(pattern, replacement);
+  }
+  return result.replace(/\s{2,}/g, " ").replace(/,\s*,/g, ",").replace(/,\s*\./g, ".").trim();
+}
+
 const LOCATION_HINT_WORDS = [
   "taxi", "cab",
   "apartment", "bedroom", "hotel", "motel",
@@ -292,12 +336,14 @@ export function validatePipeline(pipeline: PipelineJSON): ValidationResult {
 
     if (PEOPLE_WORDS_REGEX.test(set.set_image_prompt || "")) {
       const match = (set.set_image_prompt || "").match(PEOPLE_WORDS_REGEX);
+      const before = set.set_image_prompt;
+      set.set_image_prompt = stripPeopleWords(set.set_image_prompt || "");
       violations.push({
         field: "set_image_prompt",
         rule: "no-people-in-set",
-        message: `Set "${set.name || set.id}" has people reference ("${match?.[0]}"). Sets must be empty locations with no human presence.`,
+        message: `Set "${set.name || set.id}" had people reference ("${match?.[0]}") — auto-stripped. Sets must be empty locations with no human presence.`,
         severity: "error",
-        autoFixed: false,
+        autoFixed: before !== set.set_image_prompt,
       });
     }
   }
@@ -504,16 +550,18 @@ export function validatePipeline(pipeline: PipelineJSON): ValidationResult {
       }
     }
 
-    // Rule: no generic people words in scene_image_prompt
+    // Rule: no generic people words in scene_image_prompt (auto-fix)
     if (PEOPLE_WORDS_REGEX.test(scene.scene_image_prompt)) {
       const match = scene.scene_image_prompt.match(PEOPLE_WORDS_REGEX);
+      const before = scene.scene_image_prompt;
+      scene.scene_image_prompt = stripPeopleWords(scene.scene_image_prompt);
       violations.push({
         sceneId: sid,
         field: "scene_image_prompt",
         rule: "no-people-in-background",
-        message: `People reference "${match?.[0]}" in scene_image_prompt. Background must be empty of people — characters are composited separately.`,
+        message: `People reference "${match?.[0]}" in scene_image_prompt — auto-stripped. Backgrounds must be empty of people; characters are composited separately.`,
         severity: "warning",
-        autoFixed: false,
+        autoFixed: before !== scene.scene_image_prompt,
       });
     }
 
@@ -609,13 +657,17 @@ export function validatePipeline(pipeline: PipelineJSON): ValidationResult {
       const textToCheck = promptAfterFix.replace(NO_SPEAKING_PREFIX, "");
       if (SPEECH_TRIGGER_REGEX.test(textToCheck)) {
         const match = textToCheck.match(SPEECH_TRIGGER_REGEX);
+        const stripped = textToCheck.replace(
+          new RegExp(`\\b(${SPEECH_TRIGGER_WORDS.join("|")})\\b`, "gi"), ""
+        ).replace(/\s{2,}/g, " ").trim();
+        fixed.scenes[i].animation_prompt = NO_SPEAKING_PREFIX + stripped;
         violations.push({
           sceneId: sid,
           field: "animation_prompt",
           rule: "speech-trigger-word",
-          message: `Narration scene uses speech-trigger word "${match?.[0]}". This may cause unwanted lip-sync in the video model.`,
+          message: `Narration scene had speech-trigger word "${match?.[0]}" — auto-stripped to prevent unwanted lip-sync.`,
           severity: "warning",
-          autoFixed: false,
+          autoFixed: true,
         });
       }
     }
@@ -722,6 +774,32 @@ export function validatePipeline(pipeline: PipelineJSON): ValidationResult {
       severity: "warning",
       autoFixed: true,
     });
+  }
+
+  // ── Assign background_group for consecutive same-set, same-prompt scenes ──
+  // Runs after continuity fix (which normalises prompts) and dialogue split.
+  // Scenes in the same group share a single generated background image.
+  {
+    let bgRunStart = 0;
+    while (bgRunStart < fixed.scenes.length) {
+      const anchor = fixed.scenes[bgRunStart];
+      let bgRunEnd = bgRunStart + 1;
+      while (
+        bgRunEnd < fixed.scenes.length &&
+        fixed.scenes[bgRunEnd].set_id === anchor.set_id &&
+        normalizePrompt(fixed.scenes[bgRunEnd].scene_image_prompt) === normalizePrompt(anchor.scene_image_prompt)
+      ) {
+        bgRunEnd++;
+      }
+      const runLen = bgRunEnd - bgRunStart;
+      if (runLen > 1) {
+        const groupId = anchor.id.replace(/[a-z]$/, "");
+        for (let k = bgRunStart; k < bgRunEnd; k++) {
+          fixed.scenes[k].background_group = groupId;
+        }
+      }
+      bgRunStart = bgRunEnd;
+    }
   }
 
   const autoFixed = violations.filter((v) => v.autoFixed).length;

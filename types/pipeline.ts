@@ -21,6 +21,7 @@ export interface Scene {
   dialogue: DialogueLine[];
   narration: string;
   dialogue_group?: string;
+  background_group?: string;
 }
 
 export interface StorySet {

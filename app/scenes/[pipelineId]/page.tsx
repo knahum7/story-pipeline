@@ -247,6 +247,16 @@ export default function ScenesPage() {
     [pipeline],
   );
 
+  const getBackgroundGroupSiblings = useCallback(
+    (scene: Scene): Scene[] => {
+      if (!scene.background_group || !pipeline?.scenes) return [];
+      return pipeline.scenes.filter(
+        (s) => s.background_group === scene.background_group && s.id !== scene.id,
+      );
+    },
+    [pipeline],
+  );
+
   useEffect(() => {
     const load = async () => {
       try {
@@ -390,9 +400,10 @@ export default function ScenesPage() {
         const allNewImages: SceneImage[] = [newImage];
         setSelectedImagePerScene((prev) => ({ ...prev, [scene.id]: newImage.id }));
 
-        // Duplicate background for dialogue group siblings
-        const siblings = getDialogueGroupSiblings(scene);
-        for (const sib of siblings) {
+        // Duplicate background for all background group siblings (covers both
+        // consecutive same-set scenes and dialogue group sub-scenes)
+        const bgSiblings = getBackgroundGroupSiblings(scene);
+        for (const sib of bgSiblings) {
           try {
             const dupRes = await fetch("/api/scenes/duplicate-asset", {
               method: "POST",
@@ -420,7 +431,7 @@ export default function ScenesPage() {
         setGenerating((prev) => ({ ...prev, [scene.id]: false }));
       }
     },
-    [pipelineId, editedPrompts, getSetImageUrl, getDialogueGroupSiblings, t]
+    [pipelineId, editedPrompts, getSetImageUrl, getBackgroundGroupSiblings, t]
   );
 
   const generateSetImage = useCallback(
@@ -719,10 +730,9 @@ export default function ScenesPage() {
     const generatedGroups = new Set<string>();
     for (const scene of pipeline.scenes) {
       if (pipelineCancelRef.current) break;
-      // For dialogue groups, only generate for the first scene (siblings get duplicated automatically)
-      if (scene.dialogue_group) {
-        if (generatedGroups.has(scene.dialogue_group)) continue;
-        generatedGroups.add(scene.dialogue_group);
+      if (scene.background_group) {
+        if (generatedGroups.has(scene.background_group)) continue;
+        generatedGroups.add(scene.background_group);
       }
       const existing = sceneImages.some((i) => i.scene_id === scene.id);
       if (!existing) await generateScene(scene);
@@ -794,15 +804,15 @@ export default function ScenesPage() {
     const scenes = pipeline.scenes;
     const total = scenes.length;
 
-    // Step 1: Backgrounds (dialogue groups generate once, siblings get duplicated by generateScene)
+    // Step 1: Backgrounds (background groups generate once, siblings get duplicated by generateScene)
     const bgGroups = new Set<string>();
     setPipelineStep(t("progress_backgrounds"));
     for (let i = 0; i < scenes.length; i++) {
       if (pipelineCancelRef.current) break;
       setPipelineProgress({ current: i + 1, total });
-      if (scenes[i].dialogue_group) {
-        if (bgGroups.has(scenes[i].dialogue_group!)) continue;
-        bgGroups.add(scenes[i].dialogue_group!);
+      if (scenes[i].background_group) {
+        if (bgGroups.has(scenes[i].background_group!)) continue;
+        bgGroups.add(scenes[i].background_group!);
       }
       const existing = sceneImages.some((img) => img.scene_id === scenes[i].id);
       if (!existing) await generateScene(scenes[i]);
