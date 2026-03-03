@@ -57,7 +57,7 @@ Each character object:
 - id: unique identifier (char_01, char_02, etc.)
 - name: full name
 - role: story role (e.g. "Protagonist", "Antagonist", "Supporting")
-- voice_url: always "" (filled later)
+- voice_url: MUST be "" (empty string). Voices are assigned programmatically by the pipeline based on inferred gender. NEVER fill this in — any value you write will be overridden.
 - character_reference_url: always "" (filled later)
 - image_generation_prompt: detailed prompt for generating a PORTRAIT of this character.
 
@@ -71,6 +71,8 @@ RULES:
 - ONLY VISUAL details. No smells, sounds, textures-by-touch, or backstory. The image model renders pixels, nothing else.
 - Focus ONLY on subject-specific details. DO NOT include style or quality descriptors — those come from the style reference image.
 - Be specific about clothing, hair, and distinguishing features — these must be consistent every time the character appears.
+
+CONTENT SAFETY: If a character is a minor (under 18), NEVER describe them with suggestive clothing ("tight-fitting", "slinky", "revealing"), intoxication, or sexual context. Use age-appropriate, neutral descriptions. Image generation models will REJECT prompts that combine minors with suggestive details. Instead of "tight-fitting slinky black dress", write "simple black dress". Instead of "slight intoxication", omit it entirely — it is not a visual detail.
 
 WHO TO INCLUDE: Create character entries ONLY for characters who have dialogue lines OR who physically appear in scenes. Minor characters who are only mentioned in passing (e.g. a boss described in narration but never seen/speaking) should NOT get a character entry — describe them directly in the animation_prompt when they appear. If a minor character has even ONE dialogue line, they MUST have a character entry so the line can be attributed.
 
@@ -91,7 +93,8 @@ FORMAT for set_image_prompt: "[location type], [architectural details: walls, ce
 
 RULES:
 - Write a WIDE, COMPREHENSIVE establishing shot — this is the "master reference" for the location. Include enough architectural and decorative detail that variations (different camera angles) will still look like the same place.
-- NO characters, people, figures, or silhouettes — sets are empty locations.
+- NO characters, people, figures, silhouettes, crowds, servers, waiters, passersby, or any human presence — sets are EMPTY locations with ZERO people. If the story mentions a "busy restaurant", describe the furniture, decor, and lighting but NOT the people. The compositing pipeline adds characters later.
+- NO sounds, smells, or non-visual details — "city sounds", "samba music", "laughter" cannot be rendered. Describe ONLY what a camera sees.
 - NO style or quality descriptors — those come from the style reference image.
 - Be SPECIFIC about distinguishing features: wall materials, floor type, lighting fixtures, furniture style, color scheme. These details anchor visual consistency across scenes.
 - Each distinct physical location in the story gets its own set. If a story moves between a kitchen, a porch, and a bar, create three sets.
@@ -132,7 +135,9 @@ RULES:
 - Match the lighting to what the animation_prompt describes (if characters are near a window, light the scene from that direction).
 - DO NOT include style or quality descriptors — those come from the style reference image via the set image.
 - Repeat KEY ARCHITECTURAL DETAILS from the set_image_prompt (floor material, wall color, lighting type) to reinforce location identity. The model uses the set image as visual reference but the prompt still guides composition.
-- !! BANNED WORDS: "Same", "same as", "similar to", "previous", "as before", "again", "see scene_XX". Each scene_image_prompt is sent to a COMPLETELY SEPARATE API call. ALWAYS write the FULL, self-contained description. COPY-PASTE details from the set_image_prompt when needed — that is the correct approach.
+- !! BANNED IN scene_image_prompt:
+  (a) Reference words: "Same", "same as", "similar to", "previous", "as before", "again", "see scene_XX". Each prompt is sent to a COMPLETELY SEPARATE API call with zero memory. ALWAYS write the FULL, self-contained description. COPY-PASTE details from the set_image_prompt when needed.
+  (b) Character names or people: NEVER write "Ivan visible in distance", "with audience members", "well-wishers surrounding", "servers carrying trays", or ANY human presence. This field generates the EMPTY BACKGROUND. Characters are composited in separately. If you put people in the background prompt, they will appear as uncontrollable ghost figures that conflict with the composited characters.
 
 EXAMPLE (for a scene in set "Auditorium"): "Front row seating area of large gallery with gleaming honey-toned hardwood floors, reserved sign reading Borysenko Family and Friends on center chair, folding chairs arranged in horseshoe pattern visible in background, stage area with microphones visible at far end, warm overhead track lighting, evening atmosphere, vertical 9:16 framing"
 
@@ -147,15 +152,16 @@ CAMERA: [Camera behavior. One sentence: static, slow pan left/right, dolly in/ou
 
 CRITICAL RULES FOR ANIMATION PROMPTS:
 
+FOR ALL SCENES — FULL NAME REQUIREMENT:
+- ALWAYS use each character's FULL NAME as listed in their character entry. If the character's name is "Ivan Borysenko", write "Ivan Borysenko" — NEVER just "Ivan". If the character's name is "Pia Borysenko", write "Pia Borysenko" — NEVER just "Pia". If the character only has a first name (e.g. "Martin"), that IS the full name. NEVER use character IDs like "char_01".
+
 FOR DIALOGUE SCENES (dialogue array is non-empty):
 - In MOTION, describe the speaking character's gestures, facial expressions, and body language while talking. Include "lips moving" or "speaking" for the character who has dialogue. Other characters remain mostly still or react subtly.
-- ALWAYS reference characters by their FULL NAME (never char_01).
 
 FOR NARRATION SCENES (narration is non-empty, dialogue is empty):
 - The narration audio plays as voiceover. The video model WILL attempt lip-sync on any character it thinks is speaking. To prevent this:
 - MOTION section MUST begin with the exact sentence: "No characters are speaking."
 - After that sentence, describe ONLY: subtle body language (breathing, shifting weight, looking around), environmental motion (wind, light changes, floating dust), and object interactions (turning pages, holding items). NEVER use words like "speaks", "says", "talks", "discusses", "explains", "tells", "addresses", "describes", "announces", "asks", "replies", "responds", "comments", "mentions", "remarks", "whispers", "murmurs", "calls out" — these ALL trigger lip-sync.
-- ALWAYS reference characters by their FULL NAME (never char_01).
 
 FOR EMPTY SCENES (no characters, narration only):
 - POSITIONS: "No characters in frame."
@@ -218,7 +224,7 @@ CRITICAL SCENE RULES (ZERO TOLERANCE)
 
 9. EVERY SCENE MUST HAVE A set_id — each scene MUST reference a valid set from the sets array. Scenes at the same physical location MUST share the same set_id. When the story moves to a new location, use a different set_id.
 
-10. SCENE CONTINUITY — when splitting a conversation or long passage into multiple scenes at the same location, use the SAME set_id and COPY the full scene_image_prompt TEXT VERBATIM (do NOT write "Same...", "Similar...", "As before..." — each prompt is processed independently with zero memory). Only change the set_id when the story's location actually changes.
+10. SCENE CONTINUITY — when splitting a conversation or long passage into multiple scenes at the same location AND same camera angle, use the SAME set_id and COPY-PASTE the scene_image_prompt IDENTICALLY, character-for-character. Each prompt goes to a separate API call with no memory — even tiny wording changes produce a visually different background. If the camera angle genuinely changes within the same set (e.g. switching from a front-row view to a stage view), then a different scene_image_prompt is appropriate. But for alternating dialogue turns at the same spot, the background MUST be identical. NEVER write "Same...", "Similar...", "As before...".
 
 11. NO DURATION FIELD — scenes do not have a fixed duration. Video length is determined automatically: dialogue and narration scenes match their TTS audio length, silent scenes default to ~5 seconds.
 

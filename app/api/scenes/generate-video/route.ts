@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fal } from "@fal-ai/client";
 import { getSupabase } from "@/lib/supabase";
+import { falSubscribeWithRetry } from "@/lib/fal-retry";
 import { VIDEO_AUDIO_MODEL, VIDEO_IMAGE_MODEL } from "@/lib/fal-models";
+
+export const maxDuration = 900;
 
 // Visual quality negatives shared by all scene types
 const BASE_NEGATIVE = [
@@ -31,16 +33,6 @@ const NARRATION_NEGATIVE = [
 
 function isNarrationPrompt(prompt: string): boolean {
   return prompt.includes("No characters are speaking");
-}
-
-fal.config({ credentials: () => process.env.FAL_KEY || "" });
-
-interface FalVideoResult {
-  data: {
-    video?: { url: string; file_size?: number; file_name?: string; content_type?: string; duration?: number; num_frames?: number };
-    seed?: number;
-  };
-  requestId?: string;
 }
 
 export async function POST(req: NextRequest) {
@@ -105,8 +97,17 @@ export async function POST(req: NextRequest) {
       input.generate_audio = true;
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result = (await (fal as any).subscribe(model, { input })) as FalVideoResult;
+    const result = await falSubscribeWithRetry<{
+      video?: {
+        url: string;
+        file_size?: number;
+        file_name?: string;
+        content_type?: string;
+        duration?: number;
+        num_frames?: number;
+      };
+      seed?: number;
+    }>(model, input, "scenes-video");
 
     const video = result.data?.video;
     if (!video?.url) {

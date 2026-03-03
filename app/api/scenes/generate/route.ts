@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fal } from "@fal-ai/client";
 import { getSupabase } from "@/lib/supabase";
+import { falSubscribeWithRetry } from "@/lib/fal-retry";
 import { IMAGE_EDIT_MODEL } from "@/lib/fal-models";
 
-fal.config({ credentials: () => process.env.FAL_KEY || "" });
+export const maxDuration = 900;
 
 interface FalImage {
   url: string;
@@ -69,8 +69,11 @@ export async function POST(req: NextRequest) {
       output_format: "png",
     };
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result = (await (fal as any).subscribe(IMAGE_EDIT_MODEL, { input })) as FalResult;
+    const result = await falSubscribeWithRetry<{ images?: FalImage[]; seed?: number }>(
+      IMAGE_EDIT_MODEL,
+      input,
+      "scenes",
+    );
 
     const images = result.data?.images || [];
     if (!images.length || !images[0].url) {

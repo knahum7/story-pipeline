@@ -1,17 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fal } from "@fal-ai/client";
 import { getSupabase } from "@/lib/supabase";
+import { falSubscribeWithRetry } from "@/lib/fal-retry";
 import { TTS_MODEL, NARRATOR_VOICE_ID } from "@/lib/fal-models";
 
-fal.config({ credentials: () => process.env.FAL_KEY || "" });
-
-interface FalTTSResult {
-  data: {
-    audio?: { url: string; file_name?: string; content_type?: string };
-    duration_ms?: number;
-  };
-  requestId?: string;
-}
+export const maxDuration = 900;
 
 export async function POST(req: NextRequest) {
   try {
@@ -48,8 +40,10 @@ export async function POST(req: NextRequest) {
       input.voice_setting = { voice_id: resolvedVoiceId };
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result = (await (fal as any).subscribe(TTS_MODEL, { input })) as FalTTSResult;
+    const result = await falSubscribeWithRetry<{
+      audio?: { url: string; file_name?: string; content_type?: string };
+      duration_ms?: number;
+    }>(TTS_MODEL, input, "scene-audio");
 
     const audio = result.data?.audio;
     if (!audio?.url) {

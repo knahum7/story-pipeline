@@ -1,20 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fal } from "@fal-ai/client";
 import { getSupabase } from "@/lib/supabase";
+import { falSubscribeWithRetry } from "@/lib/fal-retry";
 import { STYLE_T2I_MODEL } from "@/lib/fal-models";
 
-fal.config({ credentials: () => process.env.FAL_KEY || "" });
+export const maxDuration = 900;
 
 interface FalImage {
   url: string;
   width?: number;
   height?: number;
   content_type?: string;
-}
-
-interface FalResult {
-  data: { images?: FalImage[]; seed?: number; description?: string };
-  requestId?: string;
 }
 
 export async function POST(req: NextRequest) {
@@ -50,8 +45,11 @@ export async function POST(req: NextRequest) {
       resolution: "1K",
     };
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result = (await (fal as any).subscribe(STYLE_T2I_MODEL, { input })) as FalResult;
+    const result = await falSubscribeWithRetry<{
+      images?: FalImage[];
+      seed?: number;
+      description?: string;
+    }>(STYLE_T2I_MODEL, input, "style-image");
 
     const images = result.data?.images || [];
     if (!images.length || !images[0].url) {

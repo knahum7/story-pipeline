@@ -46,6 +46,15 @@ const SPEECH_TRIGGER_REGEX = new RegExp(
   `\\b(${SPEECH_TRIGGER_WORDS.join("|")})\\b`, "i"
 );
 
+const MINOR_AGE_PATTERN = /\b(1[0-7]|[1-9])\s*(?:years?\s*old|year-old|yo\b)|teenager|teen\b/i;
+const SUGGESTIVE_MINOR_PATTERNS = [
+  /\b(?:tight[- ]?fitting|slinky|revealing|low[- ]?cut|skimpy|provocative|seductive)\b/i,
+  /\bintoxicat(?:ed|ion)\b/i,
+  /\bdrunk\b/i,
+];
+
+const PEOPLE_WORDS_REGEX = /\b(audience members?|well-?wishers?|servers?|waiters?|waitress(?:es)?|patrons?|pedestrians?|passersby|bystanders?|crowd(?:ed|s)?|people|figures?|silhouettes?|strangers?|onlookers?|spectators?|visitors?|guests?)\b/i;
+
 const NON_VISUAL_PATTERNS = [
   /\bscent\b/i, /\bsmell(?:s|ing)?\b/i, /\baroma\b/i, /\bodor\b/i,
   /\bstench\b/i, /\bfragran(?:ce|t)\b/i,
@@ -100,19 +109,49 @@ export function validatePipeline(pipeline: PipelineJSON): ValidationResult {
     }
   }
 
+  // ── Content safety for minors ──
+  for (const char of fixed.characters) {
+    if (MINOR_AGE_PATTERN.test(char.image_generation_prompt)) {
+      for (const pattern of SUGGESTIVE_MINOR_PATTERNS) {
+        const match = char.image_generation_prompt.match(pattern);
+        if (match) {
+          violations.push({
+            characterId: char.id,
+            field: "image_generation_prompt",
+            rule: "minor-content-safety",
+            message: `Minor character "${char.name}" has suggestive detail "${match[0]}". Image models will REJECT this prompt. Remove suggestive descriptions for characters under 18.`,
+            severity: "error",
+            autoFixed: false,
+          });
+        }
+      }
+    }
+  }
+
   // ── Voice assignment ──
-  // Assign gender-appropriate voices to characters that don't have one yet.
-  // Tracks per-gender index so same-gender characters get distinct voices.
+  // ALWAYS override voice_url with gender-appropriate voices.
+  // The LLM may fill in voice_url despite being told not to, and often
+  // assigns wrong-gender voices. We re-assign every character to guarantee
+  // correct gender mapping and unique voices per gender group.
   const genderCounters: Record<string, number> = { female: 0, male: 0, unknown: 0 };
 
   for (let i = 0; i < fixed.characters.length; i++) {
     const char = fixed.characters[i];
-    if (!char.voice_url) {
-      const gender = inferGender(char.image_generation_prompt, char.name);
-      const genderIndex = genderCounters[gender];
-      genderCounters[gender]++;
-      fixed.characters[i].voice_url = getCharacterVoiceId(genderIndex, char.image_generation_prompt, char.name);
+    const gender = inferGender(char.image_generation_prompt, char.name);
+    const genderIndex = genderCounters[gender];
+    genderCounters[gender]++;
+    const correctVoice = getCharacterVoiceId(genderIndex, char.image_generation_prompt, char.name);
+    if (char.voice_url && char.voice_url !== correctVoice) {
+      violations.push({
+        characterId: char.id,
+        field: "voice_url",
+        rule: "voice-override",
+        message: `LLM assigned voice "${char.voice_url}" — overridden with gender-appropriate "${correctVoice}" (inferred: ${gender}).`,
+        severity: "warning",
+        autoFixed: true,
+      });
     }
+    fixed.characters[i].voice_url = correctVoice;
   }
 
   // ── Sets validation ──
@@ -146,6 +185,17 @@ export function validatePipeline(pipeline: PipelineJSON): ValidationResult {
         });
         break;
       }
+    }
+
+    if (PEOPLE_WORDS_REGEX.test(set.set_image_prompt || "")) {
+      const match = (set.set_image_prompt || "").match(PEOPLE_WORDS_REGEX);
+      violations.push({
+        field: "set_image_prompt",
+        rule: "no-people-in-set",
+        message: `Set "${set.name || set.id}" has people reference ("${match?.[0]}"). Sets must be empty locations with no human presence.`,
+        severity: "error",
+        autoFixed: false,
+      });
     }
   }
 
@@ -302,6 +352,33 @@ export function validatePipeline(pipeline: PipelineJSON): ValidationResult {
         });
         break;
       }
+    }
+
+    // Rule: no character names in scene_image_prompt
+    for (const char of fixed.characters) {
+      if (scene.scene_image_prompt.toLowerCase().includes(char.name.toLowerCase())) {
+        violations.push({
+          sceneId: sid,
+          field: "scene_image_prompt",
+          rule: "no-people-in-background",
+          message: `Character name "${char.name}" found in scene_image_prompt. Background prompts must not contain characters — they are composited separately.`,
+          severity: "error",
+          autoFixed: false,
+        });
+      }
+    }
+
+    // Rule: no generic people words in scene_image_prompt
+    if (PEOPLE_WORDS_REGEX.test(scene.scene_image_prompt)) {
+      const match = scene.scene_image_prompt.match(PEOPLE_WORDS_REGEX);
+      violations.push({
+        sceneId: sid,
+        field: "scene_image_prompt",
+        rule: "no-people-in-background",
+        message: `People reference "${match?.[0]}" in scene_image_prompt. Background must be empty of people — characters are composited separately.`,
+        severity: "warning",
+        autoFixed: false,
+      });
     }
 
     // ── animation_prompt checks ──
