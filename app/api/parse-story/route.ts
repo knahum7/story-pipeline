@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PIPELINE_SYSTEM_PROMPT, buildUserPrompt } from "@/lib/prompt";
 
+declare const EdgeRuntime: string | undefined;
+
 export const runtime = "edge";
+export const maxDuration = 900;
 
 async function streamClaude(
   storyText: string,
@@ -158,12 +161,20 @@ export async function POST(req: NextRequest) {
 
     const storyLength = storyText.length;
     const wordCount = storyText.trim().split(/\s+/).length;
-    console.log(`[parse-story] Starting pipeline — ${wordCount} words, ${storyLength} chars`);
+
+    const runtimeEnv = typeof EdgeRuntime !== "undefined" ? "edge" : "node";
+    const hasBuffer = typeof Buffer !== "undefined";
+    const hasProcess = typeof process !== "undefined" && !!process.versions?.node;
+    console.log(
+      `[parse-story] runtime=${runtimeEnv} hasBuffer=${hasBuffer} hasNodeProcess=${hasProcess} | Starting pipeline — ${wordCount} words, ${storyLength} chars`
+    );
 
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
         const startTime = Date.now();
+
+        controller.enqueue(encoder.encode(`: heartbeat\n\n`));
 
         try {
           console.log("[parse-story] Attempting Claude (claude-sonnet-4-20250514)...");
