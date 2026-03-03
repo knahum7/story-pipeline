@@ -15,11 +15,19 @@ export interface DialogueLine {
 export interface Scene {
   id: string;
   title: string;
+  set_id: string;
   characters: string[];
   scene_image_prompt: string;
   animation_prompt: string;
   dialogue: DialogueLine[];
   narration: string;
+}
+
+export interface StorySet {
+  id: string;
+  name: string;
+  set_image_prompt: string;
+  set_image_url: string;
 }
 
 export interface StoryInfo {
@@ -38,6 +46,7 @@ export interface PipelineJSON {
   style_prompt: string;
   style_image_url: string;
   characters: Character[];
+  sets: StorySet[];
   scenes: Scene[];
 }
 

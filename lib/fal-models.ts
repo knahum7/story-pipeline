@@ -6,32 +6,72 @@ export const TTS_MODEL = "fal-ai/minimax/speech-2.8-turbo";
 
 export const NARRATOR_VOICE_ID = "English_CaptivatingStoryteller";
 
-// Distinct English voices assigned round-robin to characters.
-// Deliberately varied in gender, age, and timbre so each character
-// sounds different even without a user-uploaded voice sample.
-const CHARACTER_VOICE_POOL = [
-  "English_magnetic_voiced_man",
+const FEMALE_VOICES = [
   "English_ConfidentWoman",
-  "English_ReservedYoungMan",
   "English_Graceful_Lady",
-  "English_ManWithDeepVoice",
   "English_radiant_girl",
-  "English_PatientMan",
   "English_SentimentalLady",
-  "English_Trustworth_Man",
-  "English_PlayfulGirl",
-  "English_Deep-VoicedGentleman",
   "English_SereneWoman",
-  "English_Debator",
+  "English_PlayfulGirl",
   "English_Kind-heartedGirl",
+  "English_compelling_lady1",
+] as const;
+
+const MALE_VOICES = [
+  "English_magnetic_voiced_man",
+  "English_ReservedYoungMan",
+  "English_ManWithDeepVoice",
+  "English_PatientMan",
+  "English_Trustworth_Man",
+  "English_Deep-VoicedGentleman",
+  "English_Debator",
   "English_Comedian",
 ] as const;
 
+const FEMALE_KEYWORDS = /\b(woman|lady|girl|female|she|her|mother|daughter|sister|wife|queen|princess|actress|heroine|mrs|miss|ms)\b/i;
+const MALE_KEYWORDS = /\b(man|gentleman|boy|male|he|his|father|son|brother|husband|king|prince|actor|hero|mr)\b/i;
+
+export type InferredGender = "female" | "male" | "unknown";
+
 /**
- * Returns a consistent voice_id for a given character index.
- * Characters keep the same voice across the entire pipeline
- * as long as the same ordered character list is used.
+ * Infers gender from a character's image_generation_prompt or name.
+ * Checks for gendered keywords in the description text.
  */
-export function getCharacterVoiceId(characterIndex: number): string {
-  return CHARACTER_VOICE_POOL[characterIndex % CHARACTER_VOICE_POOL.length];
+export function inferGender(prompt: string, name?: string): InferredGender {
+  const text = `${name || ""} ${prompt}`.toLowerCase();
+  const femaleMatch = FEMALE_KEYWORDS.test(text);
+  const maleMatch = MALE_KEYWORDS.test(text);
+
+  if (femaleMatch && !maleMatch) return "female";
+  if (maleMatch && !femaleMatch) return "male";
+  // If both match (e.g. "her father"), count occurrences
+  if (femaleMatch && maleMatch) {
+    const fCount = (text.match(FEMALE_KEYWORDS) || []).length;
+    const mCount = (text.match(MALE_KEYWORDS) || []).length;
+    return fCount >= mCount ? "female" : "male";
+  }
+  return "unknown";
+}
+
+/**
+ * Returns a gender-appropriate voice_id for a character.
+ * Uses the character's prompt/name to infer gender, then assigns
+ * from the matching voice pool by index for consistency.
+ */
+export function getCharacterVoiceId(
+  characterIndex: number,
+  prompt?: string,
+  name?: string,
+): string {
+  const gender = prompt ? inferGender(prompt, name) : "unknown";
+
+  if (gender === "female") {
+    return FEMALE_VOICES[characterIndex % FEMALE_VOICES.length];
+  }
+  if (gender === "male") {
+    return MALE_VOICES[characterIndex % MALE_VOICES.length];
+  }
+  // Unknown: alternate between pools
+  const combined = [...FEMALE_VOICES, ...MALE_VOICES];
+  return combined[characterIndex % combined.length];
 }

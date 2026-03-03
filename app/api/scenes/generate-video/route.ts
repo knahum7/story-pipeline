@@ -3,7 +3,8 @@ import { fal } from "@fal-ai/client";
 import { getSupabase } from "@/lib/supabase";
 import { VIDEO_AUDIO_MODEL, VIDEO_IMAGE_MODEL } from "@/lib/fal-models";
 
-const VIDEO_NEGATIVE_PROMPT = [
+// Visual quality negatives shared by all scene types
+const BASE_NEGATIVE = [
   "subtitles, captions, text overlay, watermark, title cards, burned-in text, on-screen text, credits",
   "blurry, out of focus, overexposed, underexposed, low contrast, washed out colors",
   "excessive noise, grainy texture, poor lighting, flickering, motion blur",
@@ -13,13 +14,24 @@ const VIDEO_NEGATIVE_PROMPT = [
   "background too sharp, background clutter, distracting reflections, harsh shadows",
   "inconsistent lighting direction, color banding, cartoonish rendering, 3D CGI look",
   "unrealistic materials, uncanny valley effect, incorrect ethnicity, wrong gender",
-  "exaggerated expressions, wrong gaze direction, mismatched lip sync",
-  "silent or muted audio, distorted voice, robotic voice, echo, background noise",
-  "off-sync audio, incorrect dialogue, added dialogue, repetitive speech",
   "jittery movement, awkward pauses, incorrect timing, unnatural transitions",
   "inconsistent framing, tilted camera, flat lighting, inconsistent tone",
   "cinematic oversaturation, stylized filters, AI artifacts",
 ].join(", ");
+
+// Dialogue scenes: encourage lip sync — only negate quality issues, not speech itself
+const DIALOGUE_NEGATIVE = BASE_NEGATIVE;
+
+// Narration/silent scenes: suppress all lip movement and unwanted speech
+const NARRATION_NEGATIVE = [
+  BASE_NEGATIVE,
+  "lip sync, lip movement, mouth movement, talking, speaking, moving lips",
+  "off-sync audio, incorrect dialogue, added dialogue, repetitive speech",
+].join(", ");
+
+function isNarrationPrompt(prompt: string): boolean {
+  return prompt.includes("No characters are speaking");
+}
 
 fal.config({ credentials: () => process.env.FAL_KEY || "" });
 
@@ -64,13 +76,16 @@ export async function POST(req: NextRequest) {
     // No audio → image-to-video (silent/ambient scenes)
     const model = hasAudio ? VIDEO_AUDIO_MODEL : VIDEO_IMAGE_MODEL;
 
+    const isNarration = isNarrationPrompt(animationPrompt);
+    const negativePrompt = isNarration ? NARRATION_NEGATIVE : DIALOGUE_NEGATIVE;
+
     console.log(
-      `[scenes-video] Generating video for ${sceneId} with ${model}${hasAudio ? " + audio" : ""}, prompt: ${animationPrompt.slice(0, 150)}...`
+      `[scenes-video] Generating video for ${sceneId} with ${model}${hasAudio ? " + audio" : ""} [${isNarration ? "narration" : "dialogue"}], prompt: ${animationPrompt.slice(0, 150)}...`
     );
 
     const input: Record<string, unknown> = {
       prompt: animationPrompt,
-      negative_prompt: VIDEO_NEGATIVE_PROMPT,
+      negative_prompt: negativePrompt,
       image_url: compositeImageUrl,
       video_size: { width: 720, height: 1280 },
       use_multiscale: true,

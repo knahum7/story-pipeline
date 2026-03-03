@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { PipelineJSON, Character, Scene } from "@/types/pipeline";
-import { Copy, Check, ChevronDown, ChevronUp, Film, Users, Clapperboard, Palette } from "lucide-react";
+import { PipelineJSON, Character, Scene, StorySet } from "@/types/pipeline";
+import { Copy, Check, ChevronDown, ChevronUp, Film, Users, Clapperboard, Palette, MapPin } from "lucide-react";
 import { useLanguage } from "@/lib/language-context";
 
 interface ResultsViewerProps {
@@ -89,15 +89,21 @@ function CharacterCard({ char }: { char: Character }) {
   );
 }
 
-function SceneCard({ scene, characters }: { scene: Scene; characters: Character[] }) {
+function SceneCard({ scene, characters, sets }: { scene: Scene; characters: Character[]; sets: StorySet[] }) {
   const { t } = useLanguage();
   const sceneChars = characters.filter(c => scene.characters.includes(c.id));
+  const sceneSet = scene.set_id ? sets.find(s => s.id === scene.set_id) : null;
 
   return (
     <div className="bg-ink-soft border border-ink-muted rounded-xl overflow-hidden card-hover">
       <div className="px-4 py-3 border-b border-ink-muted flex items-center justify-between">
         <div className="flex items-center gap-3">
           <span className="text-xs font-mono text-amber-film">{scene.id}</span>
+          {sceneSet && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-cyan-900/30 text-cyan-400 font-mono">
+              {sceneSet.name}
+            </span>
+          )}
           {scene.dialogue?.length > 0 && <Pill text="Dialogue" color="blue" />}
           {scene.narration && !scene.dialogue?.length && <Pill text="Narration" color="green" />}
         </div>
@@ -223,6 +229,30 @@ export default function ResultsViewer({ data }: ResultsViewerProps) {
                 <p className="text-sm text-parchment/70 font-mono leading-relaxed">{data.style_prompt}</p>
               </div>
             )}
+            {data.sets && data.sets.length > 0 && (
+              <div className="bg-cyan-950/20 border border-cyan-800/30 rounded-xl p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <MapPin size={14} className="text-cyan-400" />
+                  <span className="text-xs font-semibold text-cyan-400 uppercase tracking-wider">
+                    Sets ({data.sets.length})
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  {data.sets.map((set) => (
+                    <div key={set.id} className="bg-ink/40 rounded-lg p-3">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-[10px] font-mono text-cyan-400">{set.id}</span>
+                        <span className="text-xs text-parchment/30">
+                          {data.scenes?.filter(s => s.set_id === set.id).length || 0} scenes
+                        </span>
+                      </div>
+                      <p className="text-sm font-medium text-parchment/80 mb-1">{set.name}</p>
+                      <p className="text-[11px] text-parchment/40 font-mono leading-relaxed">{set.set_image_prompt}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {data.story?.art_style_direction && (
               <Accordion title={t("art_style_direction")} defaultOpen>
                 <p className="text-sm text-parchment/70 leading-relaxed pt-3">{data.story.art_style_direction}</p>
@@ -248,6 +278,7 @@ export default function ResultsViewer({ data }: ResultsViewerProps) {
                 key={scene.id}
                 scene={scene}
                 characters={data.characters || []}
+                sets={data.sets || []}
               />
             ))}
           </div>

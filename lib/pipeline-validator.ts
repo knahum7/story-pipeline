@@ -1,4 +1,5 @@
-import { PipelineJSON, Scene } from "@/types/pipeline";
+import { PipelineJSON, Scene, StorySet } from "@/types/pipeline";
+import { getCharacterVoiceId, NARRATOR_VOICE_ID, inferGender } from "@/lib/fal-models";
 
 export type ViolationSeverity = "error" | "warning";
 
@@ -99,10 +100,80 @@ export function validatePipeline(pipeline: PipelineJSON): ValidationResult {
     }
   }
 
+  // ── Voice assignment ──
+  // Assign gender-appropriate voices to characters that don't have one yet.
+  // Tracks per-gender index so same-gender characters get distinct voices.
+  const genderCounters: Record<string, number> = { female: 0, male: 0, unknown: 0 };
+
+  for (let i = 0; i < fixed.characters.length; i++) {
+    const char = fixed.characters[i];
+    if (!char.voice_url) {
+      const gender = inferGender(char.image_generation_prompt, char.name);
+      const genderIndex = genderCounters[gender];
+      genderCounters[gender]++;
+      fixed.characters[i].voice_url = getCharacterVoiceId(genderIndex, char.image_generation_prompt, char.name);
+    }
+  }
+
+  // ── Sets validation ──
+  if (!fixed.sets) {
+    fixed.sets = [];
+  }
+  const setIds = new Set(fixed.sets.map((s: StorySet) => s.id));
+
+  for (const set of fixed.sets) {
+    if (!set.set_image_prompt || !set.set_image_prompt.trim()) {
+      violations.push({
+        field: "set_image_prompt",
+        rule: "empty-set-prompt",
+        message: `Set "${set.name || set.id}" has an empty set_image_prompt. A detailed location description is required.`,
+        severity: "error",
+        autoFixed: false,
+      });
+    }
+    if (!set.set_image_url) {
+      set.set_image_url = "";
+    }
+
+    for (const pattern of NON_VISUAL_PATTERNS) {
+      if (pattern.test(set.set_image_prompt || "")) {
+        violations.push({
+          field: "set_image_prompt",
+          rule: "visual-only",
+          message: `Set "${set.name || set.id}" has non-visual detail ("${(set.set_image_prompt || "").match(pattern)?.[0]}"). Image models can only render what is visible.`,
+          severity: "warning",
+          autoFixed: false,
+        });
+        break;
+      }
+    }
+  }
+
   // ── Scene checks ──
   for (let i = 0; i < fixed.scenes.length; i++) {
     const scene = fixed.scenes[i];
     const sid = scene.id;
+
+    // Rule: scene must have a valid set_id
+    if (!scene.set_id) {
+      violations.push({
+        sceneId: sid,
+        field: "set_id",
+        rule: "missing-set-id",
+        message: "Scene has no set_id. Every scene must reference a set (location).",
+        severity: "warning",
+        autoFixed: false,
+      });
+    } else if (setIds.size > 0 && !setIds.has(scene.set_id)) {
+      violations.push({
+        sceneId: sid,
+        field: "set_id",
+        rule: "unknown-set-id",
+        message: `Scene references set "${scene.set_id}" which doesn't exist in the sets array.`,
+        severity: "error",
+        autoFixed: false,
+      });
+    }
 
     // Rule: dialogue + narration mutual exclusivity
     if (scene.dialogue?.length > 0 && scene.narration) {

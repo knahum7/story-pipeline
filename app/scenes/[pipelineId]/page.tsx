@@ -23,10 +23,11 @@ import {
   Check,
   Volume2,
   Layers,
+  MapPin,
 } from "lucide-react";
 import { useLanguage } from "@/lib/language-context";
-import { PipelineJSON, Scene } from "@/types/pipeline";
-import { getCharacterVoiceId } from "@/lib/fal-models";
+import { PipelineJSON, Scene, StorySet } from "@/types/pipeline";
+import { NARRATOR_VOICE_ID } from "@/lib/fal-models";
 
 interface SceneImage {
   id: string;
@@ -173,6 +174,10 @@ export default function ScenesPage() {
 
   const [styleImageUrl, setStyleImageUrl] = useState("");
 
+  const [generatingSet, setGeneratingSet] = useState<Record<string, boolean>>({});
+  const [editedSetPrompts, setEditedSetPrompts] = useState<Record<string, string>>({});
+  const [editingSetPrompt, setEditingSetPrompt] = useState<Record<string, boolean>>({});
+
   const [showAddSceneModal, setShowAddSceneModal] = useState(false);
   const [newSceneTitle, setNewSceneTitle] = useState("");
   const [newSceneDesc, setNewSceneDesc] = useState("");
@@ -183,6 +188,7 @@ export default function ScenesPage() {
   const overlayRef = useRef<HTMLDivElement>(null);
 
   const allCharacters = useMemo(() => pipeline?.characters || [], [pipeline]);
+  const allSets = useMemo(() => pipeline?.sets || [], [pipeline]);
 
   const getCharName = useCallback(
     (charId: string): string => {
@@ -231,6 +237,12 @@ export default function ScenesPage() {
         setEditedPrompts(prompts);
         setEditedAnimPrompts(animPrompts);
 
+        const setPrompts: Record<string, string> = {};
+        for (const s of pipelineData?.sets || []) {
+          setPrompts[s.id] = s.set_image_prompt || "";
+        }
+        setEditedSetPrompts(setPrompts);
+
         if (scenesRes.ok) {
           const sData = await scenesRes.json();
           setSceneImages(sData.scenes || []);
@@ -274,15 +286,29 @@ export default function ScenesPage() {
     [pipeline]
   );
 
+  const getSetImageUrl = useCallback(
+    (setId: string): string | undefined => {
+      const set = allSets.find((s) => s.id === setId);
+      return set?.set_image_url || undefined;
+    },
+    [allSets],
+  );
+
   const generateScene = useCallback(
     async (scene: Scene) => {
       const prompt = editedPrompts[scene.id] || scene.scene_image_prompt;
+      const setImgUrl = scene.set_id ? getSetImageUrl(scene.set_id) : undefined;
       setGenerating((prev) => ({ ...prev, [scene.id]: true }));
       try {
         const res = await fetch("/api/scenes/generate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ pipelineId, sceneId: scene.id, prompt }),
+          body: JSON.stringify({
+            pipelineId,
+            sceneId: scene.id,
+            prompt,
+            setImageUrl: setImgUrl || undefined,
+          }),
         });
         if (!res.ok) {
           const err = await res.json().catch(() => ({ error: "Generation failed" }));
@@ -297,8 +323,52 @@ export default function ScenesPage() {
         setGenerating((prev) => ({ ...prev, [scene.id]: false }));
       }
     },
-    [pipelineId, editedPrompts, t]
+    [pipelineId, editedPrompts, getSetImageUrl, t]
   );
+
+  const generateSetImage = useCallback(
+    async (set: StorySet) => {
+      const prompt = editedSetPrompts[set.id] || set.set_image_prompt;
+      if (!prompt.trim()) {
+        alert("Set image prompt is required.");
+        return;
+      }
+      setGeneratingSet((prev) => ({ ...prev, [set.id]: true }));
+      try {
+        const res = await fetch("/api/sets/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pipelineId, setId: set.id, prompt }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: "Set generation failed" }));
+          throw new Error(err.error || "Set generation failed");
+        }
+        const data = await res.json();
+        setPipeline((prev) => {
+          if (!prev) return prev;
+          const updatedSets = (prev.sets || []).map((s) =>
+            s.id === set.id ? { ...s, set_image_url: data.setImageUrl } : s,
+          );
+          return { ...prev, sets: updatedSets };
+        });
+      } catch (err) {
+        alert(err instanceof Error ? err.message : t("generation_failed"));
+      } finally {
+        setGeneratingSet((prev) => ({ ...prev, [set.id]: false }));
+      }
+    },
+    [pipelineId, editedSetPrompts, t],
+  );
+
+  const generateAllSets = useCallback(async () => {
+    if (!allSets.length) return;
+    for (const set of allSets) {
+      if (!set.set_image_url) {
+        await generateSetImage(set);
+      }
+    }
+  }, [allSets, generateSetImage]);
 
   const generateComposite = useCallback(
     async (scene: Scene) => {
@@ -361,13 +431,15 @@ export default function ScenesPage() {
         : scene.narration;
       const speakingCharId = hasDialogue ? scene.dialogue[0]?.character : null;
 
-      // Resolve voice: character index → consistent voice_id, or null for narrator
       let voiceId: string | null = null;
       if (speakingCharId && allCharacters.length > 0) {
-        const charIndex = allCharacters.findIndex((c) => c.id === speakingCharId);
-        if (charIndex >= 0) {
-          voiceId = getCharacterVoiceId(charIndex);
+        const char = allCharacters.find((c) => c.id === speakingCharId);
+        if (char?.voice_url) {
+          voiceId = char.voice_url;
         }
+      }
+      if (!voiceId && !speakingCharId) {
+        voiceId = NARRATOR_VOICE_ID;
       }
 
       setGeneratingAudio((prev) => ({ ...prev, [scene.id]: true }));
@@ -784,6 +856,133 @@ export default function ScenesPage() {
           </div>
         )}
 
+        {/* Sets Section */}
+        {allSets.length > 0 && (
+          <div className="mb-8">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <MapPin size={16} className="text-cyan-400" />
+                <h3 className="font-display text-xl font-bold text-parchment">
+                  Sets
+                </h3>
+                <span className="text-xs text-parchment/30 font-mono">
+                  {allSets.length} location{allSets.length !== 1 ? "s" : ""}
+                </span>
+              </div>
+              <button
+                onClick={generateAllSets}
+                disabled={!hasStyleImage || allSets.every((s) => !!s.set_image_url)}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs bg-cyan-900/20 border border-cyan-800/30 text-cyan-400 hover:bg-cyan-900/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Sparkles size={12} />
+                <span>Generate All Sets</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {allSets.map((set) => {
+                const isSetGen = generatingSet[set.id];
+                const isSetEditing = editingSetPrompt[set.id];
+                const setPrompt = editedSetPrompts[set.id] ?? set.set_image_prompt;
+                const scenesInSet = pipeline.scenes?.filter((s) => s.set_id === set.id) || [];
+
+                return (
+                  <div
+                    key={set.id}
+                    className="bg-ink-soft border border-ink-muted rounded-xl overflow-hidden"
+                  >
+                    <div className="px-4 py-3 border-b border-ink-muted/50">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <span className="text-[10px] font-mono text-cyan-400">{set.id}</span>
+                        <span className="text-[10px] text-parchment/20 font-mono">
+                          {scenesInSet.length} scene{scenesInSet.length !== 1 ? "s" : ""}
+                        </span>
+                      </div>
+                      <h4 className="text-sm font-semibold text-parchment">{set.name}</h4>
+                    </div>
+
+                    <div className="p-4 space-y-3">
+                      <div>
+                        <div className="flex items-center justify-end mb-1">
+                          <button
+                            onClick={() =>
+                              setEditingSetPrompt((prev) => ({
+                                ...prev,
+                                [set.id]: !prev[set.id],
+                              }))
+                            }
+                            className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded border transition-colors ${
+                              isSetEditing
+                                ? "bg-amber-film/20 border-amber-film/40 text-amber-glow"
+                                : "bg-ink-soft border-ink-muted text-parchment/40 hover:text-parchment/60"
+                            }`}
+                          >
+                            <Pencil size={10} />
+                            {isSetEditing ? t("editing") : t("edit")}
+                          </button>
+                        </div>
+                        {isSetEditing ? (
+                          <textarea
+                            value={setPrompt}
+                            onChange={(e) =>
+                              setEditedSetPrompts((prev) => ({
+                                ...prev,
+                                [set.id]: e.target.value,
+                              }))
+                            }
+                            rows={3}
+                            autoFocus
+                            className="w-full bg-ink/60 border border-cyan-500/30 rounded-lg p-2.5 text-[11px] text-parchment/70 font-mono leading-relaxed resize-y focus:outline-none focus:border-cyan-500/50 transition-colors"
+                          />
+                        ) : (
+                          <div className="bg-ink/60 border border-ink-muted/50 rounded-lg p-2.5">
+                            <p className="text-[11px] text-parchment/40 font-mono leading-relaxed line-clamp-3">
+                              {setPrompt}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      <button
+                        onClick={() => generateSetImage(set)}
+                        disabled={isSetGen || !hasStyleImage}
+                        className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed w-full justify-center bg-cyan-900/20 border border-cyan-800/30 text-cyan-400 hover:bg-cyan-900/30"
+                      >
+                        {isSetGen ? (
+                          <Loader2 size={11} className="animate-spin" />
+                        ) : (
+                          <ImageIcon size={11} />
+                        )}
+                        <span>
+                          {isSetGen
+                            ? "Generating..."
+                            : set.set_image_url
+                              ? "Regenerate Set"
+                              : "Generate Set Image"}
+                        </span>
+                      </button>
+
+                      {set.set_image_url && (
+                        <div className="relative">
+                          <img
+                            src={set.set_image_url}
+                            alt={set.name}
+                            className="w-full aspect-[9/16] rounded-lg object-cover border border-cyan-800/30"
+                            onClick={() => setExpandedImage(`set_${set.id}`)}
+                          />
+                          <div className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded bg-ink/80 text-[9px] text-cyan-400 font-mono">
+                            reference
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div className="space-y-6">
           {pipeline.scenes?.map((scene) => {
             const imgs = getSceneImagesForId(scene.id);
@@ -804,6 +1003,8 @@ export default function ScenesPage() {
             const selectedCompId = selectedCompositePerScene[scene.id];
             const hasDialogue = (scene.dialogue?.length || 0) > 0;
             const hasChars = (scene.characters?.length || 0) > 0;
+            const sceneSet = scene.set_id ? allSets.find((s) => s.id === scene.set_id) : null;
+            const hasSetImage = !!sceneSet?.set_image_url;
 
             const activeCharNames = new Map<string, string>();
             for (const charId of scene.characters || []) {
@@ -837,6 +1038,11 @@ export default function ScenesPage() {
                         {!hasDialogue && scene.narration && (
                           <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-900/30 text-blue-400 font-mono">
                             {t("narration_label")}
+                          </span>
+                        )}
+                        {scene.set_id && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-cyan-900/30 text-cyan-400 font-mono">
+                            {allSets.find((s) => s.id === scene.set_id)?.name || scene.set_id}
                           </span>
                         )}
                         {modified && (
@@ -927,14 +1133,23 @@ export default function ScenesPage() {
                       )}
                     </div>
 
-                    <button
-                      onClick={() => generateScene(scene)}
-                      disabled={isGen || !hasStyleImage}
-                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed mb-3 bg-emerald-900/20 border border-emerald-800/30 text-emerald-400 hover:bg-emerald-900/30"
-                    >
-                      {isGen ? <Loader2 size={11} className="animate-spin" /> : <ImageIcon size={11} />}
-                      <span>{isGen ? t("generating_scene") : t("generate_background")}</span>
-                    </button>
+                    <div className="flex items-center gap-2 mb-3">
+                      <button
+                        onClick={() => generateScene(scene)}
+                        disabled={isGen || (!hasStyleImage && !hasSetImage)}
+                        className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-emerald-900/20 border border-emerald-800/30 text-emerald-400 hover:bg-emerald-900/30"
+                      >
+                        {isGen ? <Loader2 size={11} className="animate-spin" /> : <ImageIcon size={11} />}
+                        <span>{isGen ? t("generating_scene") : t("generate_background")}</span>
+                      </button>
+                      {sceneSet && (
+                        <span className={`text-[10px] font-mono ${hasSetImage ? "text-cyan-400/60" : "text-amber-400/60"}`}>
+                          {hasSetImage
+                            ? `ref: ${sceneSet.name}`
+                            : `set "${sceneSet.name}" not generated`}
+                        </span>
+                      )}
+                    </div>
 
                     {imgs.length > 0 && (
                       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">

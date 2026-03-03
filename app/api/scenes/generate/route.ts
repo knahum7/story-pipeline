@@ -19,7 +19,7 @@ interface FalResult {
 
 export async function POST(req: NextRequest) {
   try {
-    const { pipelineId, sceneId, prompt } = await req.json();
+    const { pipelineId, sceneId, prompt, setImageUrl } = await req.json();
 
     if (!pipelineId || !sceneId || !prompt) {
       return NextResponse.json(
@@ -46,22 +46,24 @@ export async function POST(req: NextRequest) {
     const pipelineData = pipelineRow?.pipeline_data as Record<string, unknown> | null;
     const styleImageUrl = (pipelineData?.style_image_url as string) || "";
 
-    if (!styleImageUrl) {
+    if (!styleImageUrl && !setImageUrl) {
       return NextResponse.json(
-        { error: "Style reference image is required. Please generate one first." },
+        { error: "Style or set reference image is required. Please generate one first." },
         { status: 400 }
       );
     }
 
+    const referenceUrl = setImageUrl || styleImageUrl;
+
     const startTime = Date.now();
 
     console.log(
-      `[scenes] Generating background ${sceneId} with ${IMAGE_EDIT_MODEL}, prompt: ${prompt.slice(0, 150)}...`
+      `[scenes] Generating background ${sceneId} with ${IMAGE_EDIT_MODEL}, ref: ${setImageUrl ? "set" : "style"}, prompt: ${prompt.slice(0, 150)}...`
     );
 
     const input: Record<string, unknown> = {
       prompt,
-      image_urls: [styleImageUrl],
+      image_urls: [referenceUrl],
       aspect_ratio: "9:16",
       num_images: 1,
       output_format: "png",
