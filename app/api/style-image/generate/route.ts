@@ -37,8 +37,10 @@ export async function POST(req: NextRequest) {
       `[style-image] Generating style reference for pipeline ${pipelineId} with ${STYLE_T2I_MODEL}`
     );
 
+    const safePrompt = stylePrompt.replace(/\.?\s*$/, ". No humans, no people, no faces, no figures, abstract texture only.");
+
     const input: Record<string, unknown> = {
-      prompt: stylePrompt,
+      prompt: safePrompt,
       aspect_ratio: "1:1",
       num_images: 1,
       output_format: "png",

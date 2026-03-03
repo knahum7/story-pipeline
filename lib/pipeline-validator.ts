@@ -53,7 +53,7 @@ const SUGGESTIVE_MINOR_PATTERNS = [
   /\bdrunk\b/i,
 ];
 
-const PEOPLE_WORDS_REGEX = /\b(audience members?|well-?wishers?|servers?|waiters?|waitress(?:es)?|patrons?|pedestrians?|passersby|bystanders?|crowd(?:ed|s)?|people|figures?|silhouettes?|strangers?|onlookers?|spectators?|visitors?|guests?)\b/i;
+const PEOPLE_WORDS_REGEX = /\b(audience members?|attendees?|well-?wishers?|servers?|waiters?|waitress(?:es)?|patrons?|pedestrians?|passersby|bystanders?|crowd(?:ed|s)?|people|figures?|silhouettes?|strangers?|onlookers?|spectators?|visitors?|guests?|theatergoers?|theater people)\b/i;
 
 const NON_VISUAL_PATTERNS = [
   /\bscent\b/i, /\bsmell(?:s|ing)?\b/i, /\baroma\b/i, /\bodor\b/i,
@@ -200,6 +200,7 @@ export function validatePipeline(pipeline: PipelineJSON): ValidationResult {
   }
 
   // ── Scene checks ──
+  const multiSpeakerIndices: number[] = [];
   for (let i = 0; i < fixed.scenes.length; i++) {
     const scene = fixed.scenes[i];
     const sid = scene.id;
@@ -265,16 +266,8 @@ export function validatePipeline(pipeline: PipelineJSON): ValidationResult {
           });
         }
       }
-      // Rule: one speaker per scene
       if (speakers.size > 1) {
-        violations.push({
-          sceneId: sid,
-          field: "dialogue",
-          rule: "one-speaker",
-          message: `Multiple speakers in one scene: ${[...speakers].join(", ")}. Split into separate scenes.`,
-          severity: "error",
-          autoFixed: false,
-        });
+        multiSpeakerIndices.push(i);
       }
     }
 
@@ -435,6 +428,53 @@ export function validatePipeline(pipeline: PipelineJSON): ValidationResult {
         });
       }
     }
+  }
+
+  // ── Auto-split multi-speaker scenes (iterate in reverse to preserve indices) ──
+  for (let idx = multiSpeakerIndices.length - 1; idx >= 0; idx--) {
+    const i = multiSpeakerIndices[idx];
+    const scene = fixed.scenes[i];
+
+    const turns: { character: string; lines: { character: string; line: string }[] }[] = [];
+    for (const line of scene.dialogue) {
+      const lastTurn = turns[turns.length - 1];
+      if (lastTurn && lastTurn.character === line.character) {
+        lastTurn.lines.push(line);
+      } else {
+        turns.push({ character: line.character, lines: [line] });
+      }
+    }
+
+    if (turns.length <= 1) continue;
+
+    const charMap = new Map(fixed.characters.map((c) => [c.id, c.name]));
+
+    const splitScenes: Scene[] = turns.map((turn, turnIdx) => {
+      const charName = charMap.get(turn.character) || turn.character;
+      const suffix = String.fromCharCode(97 + turnIdx);
+
+      return {
+        id: `${scene.id}${suffix}`,
+        title: `${scene.title} (${charName})`,
+        set_id: scene.set_id,
+        characters: [turn.character],
+        scene_image_prompt: scene.scene_image_prompt,
+        animation_prompt: `POSITIONS: ${charName} stands in center-frame.\nMOTION: ${charName} reacts and delivers the line with natural expression, lips moving as the character speaks.\nCAMERA: Static medium shot with subtle handheld drift.`,
+        dialogue: turn.lines,
+        narration: "",
+      };
+    });
+
+    fixed.scenes.splice(i, 1, ...splitScenes);
+
+    violations.push({
+      sceneId: scene.id,
+      field: "dialogue",
+      rule: "one-speaker",
+      message: `Multiple speakers detected — auto-split into ${turns.length} scenes (${splitScenes.map((s) => s.id).join(", ")}).`,
+      severity: "warning",
+      autoFixed: true,
+    });
   }
 
   const autoFixed = violations.filter((v) => v.autoFixed).length;

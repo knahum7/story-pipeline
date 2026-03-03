@@ -2,8 +2,9 @@ import { fal } from "@fal-ai/client";
 
 fal.config({ credentials: () => process.env.FAL_KEY || "" });
 
-const MAX_RETRIES = 2;
-const RETRY_DELAY_MS = 3000;
+const MAX_RETRIES = 3;
+const BASE_DELAY_MS = 5000;
+const MAX_DELAY_MS = 60000;
 
 interface FalSubscribeResult<T = Record<string, unknown>> {
   data: T;
@@ -37,8 +38,9 @@ export async function falSubscribeWithRetry<T = Record<string, unknown>>(
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
       if (attempt > 0) {
-        console.log(`[${label}] Retry ${attempt}/${MAX_RETRIES} after ${RETRY_DELAY_MS}ms...`);
-        await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+        const delay = Math.min(BASE_DELAY_MS * Math.pow(2, attempt - 1), MAX_DELAY_MS);
+        console.log(`[${label}] Retry ${attempt}/${MAX_RETRIES} after ${(delay / 1000).toFixed(0)}s...`);
+        await new Promise((r) => setTimeout(r, delay));
       }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const result = await (fal as any).subscribe(model, { input });
