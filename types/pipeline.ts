@@ -2,7 +2,6 @@ export interface Character {
   id: string;
   name: string;
   role: string;
-  voice_url: string;
   character_reference_url: string;
   image_generation_prompt: string;
 }
@@ -21,6 +20,7 @@ export interface Scene {
   animation_prompt: string;
   dialogue: DialogueLine[];
   narration: string;
+  dialogue_group?: string;
 }
 
 export interface StorySet {

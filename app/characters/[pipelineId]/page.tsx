@@ -22,9 +22,12 @@ import {
   Upload,
   Palette,
   Save,
+  Volume2,
+  LayoutGrid,
 } from "lucide-react";
 import { useLanguage } from "@/lib/language-context";
 import { PipelineJSON, Character } from "@/types/pipeline";
+import { FEMALE_VOICES, MALE_VOICES, NARRATOR_VOICE_ID, inferGender, getCharacterVoiceId } from "@/lib/fal-models";
 
 interface GeneratedImage {
   id: string;
@@ -65,6 +68,9 @@ export default function CharactersPage() {
   const [styleImageUrl, setStyleImageUrl] = useState("");
   const [generatingStyle, setGeneratingStyle] = useState(false);
 
+  const [characterVoices, setCharacterVoices] = useState<Record<string, string>>({});
+  const [voicesLoaded, setVoicesLoaded] = useState(false);
+
   const [showAddModal, setShowAddModal] = useState(false);
   const [newCharName, setNewCharName] = useState("");
   const [newCharDescription, setNewCharDescription] = useState("");
@@ -78,20 +84,22 @@ export default function CharactersPage() {
   useEffect(() => {
     const load = async () => {
       try {
-        const [pipelineRes, charsRes] = await Promise.all([
+        const [pipelineRes, charsRes, voicesRes] = await Promise.all([
           fetch(`/api/pipelines/${pipelineId}`),
           fetch(`/api/characters?pipeline_id=${pipelineId}`),
+          fetch(`/api/character-voices?pipeline_id=${pipelineId}`),
         ]);
 
         if (!pipelineRes.ok) throw new Error("Failed to load pipeline");
         const pData = await pipelineRes.json();
-        setPipeline(pData.pipeline_data);
-        setStylePrompt(pData.pipeline_data?.style_prompt || "");
-        setStylePromptSaved(pData.pipeline_data?.style_prompt || "");
-        setStyleImageUrl(pData.pipeline_data?.style_image_url || "");
+        const pipelineData = pData.pipeline_data as PipelineJSON;
+        setPipeline(pipelineData);
+        setStylePrompt(pipelineData?.style_prompt || "");
+        setStylePromptSaved(pipelineData?.style_prompt || "");
+        setStyleImageUrl(pipelineData?.style_image_url || "");
 
         const prompts: Record<string, string> = {};
-        for (const c of pData.pipeline_data?.characters || []) {
+        for (const c of pipelineData?.characters || []) {
           prompts[c.id] = c.image_generation_prompt || "";
         }
         setEditedPrompts(prompts);
@@ -99,6 +107,46 @@ export default function CharactersPage() {
         if (charsRes.ok) {
           const cData = await charsRes.json();
           setImages(cData.characters || []);
+        }
+
+        const existingVoices: Record<string, string> = {};
+        if (voicesRes.ok) {
+          const vData = await voicesRes.json();
+          for (const v of vData.voices || []) {
+            existingVoices[v.character_id] = v.voice_id;
+          }
+        }
+
+        const characters = pipelineData?.characters || [];
+        const genderCounters: Record<string, number> = { female: 0, male: 0, unknown: 0 };
+        const needsSave: { character_id: string; voice_id: string }[] = [];
+
+        for (const char of characters) {
+          const gender = inferGender(char.image_generation_prompt, char.name);
+          const genderIndex = genderCounters[gender];
+          genderCounters[gender]++;
+
+          if (!existingVoices[char.id]) {
+            const suggested = getCharacterVoiceId(genderIndex, char.image_generation_prompt, char.name);
+            existingVoices[char.id] = suggested;
+            needsSave.push({ character_id: char.id, voice_id: suggested });
+          }
+        }
+
+        if (!existingVoices["__narrator__"]) {
+          existingVoices["__narrator__"] = NARRATOR_VOICE_ID;
+          needsSave.push({ character_id: "__narrator__", voice_id: NARRATOR_VOICE_ID });
+        }
+
+        setCharacterVoices(existingVoices);
+        setVoicesLoaded(true);
+
+        for (const entry of needsSave) {
+          fetch("/api/character-voices", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ pipeline_id: pipelineId, ...entry }),
+          }).catch(() => {});
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load");
@@ -108,6 +156,22 @@ export default function CharactersPage() {
     };
     load();
   }, [pipelineId]);
+
+  const handleVoiceChange = useCallback(
+    async (characterId: string, voiceId: string) => {
+      setCharacterVoices((prev) => ({ ...prev, [characterId]: voiceId }));
+      try {
+        await fetch("/api/character-voices", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pipeline_id: pipelineId, character_id: characterId, voice_id: voiceId }),
+        });
+      } catch {
+        // revert on failure would be ideal, but the UI state is already updated
+      }
+    },
+    [pipelineId]
+  );
 
   const generateImage = useCallback(
     async (char: Character) => {
@@ -472,6 +536,13 @@ export default function CharactersPage() {
               <Clock size={13} />
               <span>{t("history")}</span>
             </Link>
+            <Link
+              href={`/storyboard/${pipelineId}`}
+              className="flex items-center gap-1.5 text-xs text-parchment/40 hover:text-parchment/70 transition-colors"
+            >
+              <LayoutGrid size={13} />
+              <span>{t("storyboard")}</span>
+            </Link>
             {hasAnyPortrait && (
               <Link
                 href={`/scenes/${pipelineId}`}
@@ -630,6 +701,44 @@ export default function CharactersPage() {
             </button>
           </div>
         </div>
+
+        {/* Narrator Voice */}
+        {voicesLoaded && (
+          <div className="mb-6 bg-ink-soft border border-ink-muted rounded-2xl overflow-hidden">
+            <div className="px-6 py-4 border-b border-ink-muted/50">
+              <div className="flex items-center gap-2 mb-1">
+                <Volume2 size={16} className="text-cyan-400" />
+                <h3 className="text-sm font-semibold text-parchment/70">Narrator Voice</h3>
+              </div>
+              <p className="text-[10px] text-parchment/30">
+                Voice used for all narration scenes (scenes without character dialogue)
+              </p>
+            </div>
+            <div className="p-6">
+              <select
+                value={characterVoices["__narrator__"] || NARRATOR_VOICE_ID}
+                onChange={(e) => handleVoiceChange("__narrator__", e.target.value)}
+                className="w-full bg-ink/60 border border-cyan-800/30 rounded-lg px-3 py-2 text-[11px] text-parchment/70 font-mono focus:outline-none focus:border-cyan-600/50 transition-colors appearance-none cursor-pointer"
+                style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2388ccdd' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: "no-repeat", backgroundPosition: "right 10px center" }}
+              >
+                <optgroup label="Female Voices">
+                  {FEMALE_VOICES.map((v) => (
+                    <option key={v} value={v}>
+                      {v.replace(/^English_/, "").replace(/([A-Z])/g, " $1").replace(/[-_]/g, " ").trim()}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="Male Voices">
+                  {MALE_VOICES.map((v) => (
+                    <option key={v} value={v}>
+                      {v.replace(/^English_/, "").replace(/([A-Z])/g, " $1").replace(/[-_]/g, " ").trim()}
+                    </option>
+                  ))}
+                </optgroup>
+              </select>
+            </div>
+          </div>
+        )}
 
         <div className="space-y-6">
           {pipeline.characters?.map((char) => {
@@ -793,6 +902,39 @@ export default function CharactersPage() {
                       </button>
                     )}
                   </div>
+
+                  {/* Voice selector */}
+                  {voicesLoaded && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <Volume2 size={12} className="text-cyan-400" />
+                        <span className="text-[10px] text-parchment/30 uppercase tracking-wider font-semibold">
+                          Voice
+                        </span>
+                      </div>
+                      <select
+                        value={characterVoices[char.id] || ""}
+                        onChange={(e) => handleVoiceChange(char.id, e.target.value)}
+                        className="w-full bg-ink/60 border border-cyan-800/30 rounded-lg px-3 py-2 text-[11px] text-parchment/70 font-mono focus:outline-none focus:border-cyan-600/50 transition-colors appearance-none cursor-pointer"
+                        style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2388ccdd' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: "no-repeat", backgroundPosition: "right 10px center" }}
+                      >
+                        <optgroup label="Female Voices">
+                          {FEMALE_VOICES.map((v) => (
+                            <option key={v} value={v}>
+                              {v.replace(/^English_/, "").replace(/([A-Z])/g, " $1").replace(/[-_]/g, " ").trim()}
+                            </option>
+                          ))}
+                        </optgroup>
+                        <optgroup label="Male Voices">
+                          {MALE_VOICES.map((v) => (
+                            <option key={v} value={v}>
+                              {v.replace(/^English_/, "").replace(/([A-Z])/g, " $1").replace(/[-_]/g, " ").trim()}
+                            </option>
+                          ))}
+                        </optgroup>
+                      </select>
+                    </div>
+                  )}
 
                   {/* Portrait gallery */}
                   {charImages.length > 0 ? (

@@ -57,7 +57,6 @@ Each character object:
 - id: unique identifier (char_01, char_02, etc.)
 - name: full name
 - role: story role (e.g. "Protagonist", "Antagonist", "Supporting")
-- voice_url: always "" (empty string). The pipeline assigns voices automatically from the image_generation_prompt — any value you write here is discarded and overridden.
 - character_reference_url: always "" (filled later)
 - image_generation_prompt: detailed prompt for generating a PORTRAIT of this character.
 
@@ -192,12 +191,10 @@ CAMERA: Slow dolly forward along the pier."
 Array of { character: "char_XX", line: "exact quote" }. MUST be empty array [] if narration is used.
 
 CRITICAL RULES:
-- Each scene may have AT MOST ONE speaking character. ALL dialogue lines in a scene must belong to the SAME character ID.
-- When a different character speaks, you MUST create a new scene.
-- A back-and-forth conversation: split into alternating scenes, one per speaker turn.
-- KEEP EACH DIALOGUE TURN UNDER 35 WORDS. The text is converted to speech audio, and the video duration matches the audio length. Long monologues (35+ words) produce very long videos that degrade in quality. Split long speeches across multiple scenes with the same speaker.
+- A scene MAY contain dialogue from MULTIPLE characters. Write the full conversation naturally — the pipeline automatically splits multi-speaker scenes into per-speaker turns that share a single composite image. This produces visually consistent dialogue sequences. Include ALL participating characters in the scene's characters array.
+- KEEP EACH CHARACTER'S TURN UNDER 35 WORDS. The text is converted to speech audio, and the video duration matches the audio length. Long monologues (35+ words) produce very long videos that degrade in quality. Split long speeches across multiple scenes with the same speaker.
 - Preserve the exact wording from the source text.
-- Multiple lines from the SAME character in one scene are allowed (they're concatenated for TTS).
+- Multiple consecutive lines from the SAME character are grouped into one turn for TTS.
 - EVERY dialogue line MUST be attributed to a character ID that exists in the characters array. If a line belongs to a minor character who doesn't have an entry, you MUST create a character entry for them first. NEVER attribute a line to the wrong character — if Character A says something to Character B, the line belongs to Character A's ID, not Character B's.
 
 ── narration ──
@@ -211,7 +208,7 @@ RULES:
 ─────────────────────────────────────────────
 CRITICAL SCENE RULES (ZERO TOLERANCE)
 ─────────────────────────────────────────────
-1. ONE SPEAKER PER SCENE — if a scene has dialogue, ALL lines belong to the SAME character. When the speaker changes, create a new scene. A conversation between two characters = alternating scenes.
+1. MULTI-SPEAKER DIALOGUE IS ALLOWED — a scene may contain dialogue from multiple characters. The pipeline auto-splits multi-speaker scenes into per-turn sub-scenes that share a single composite image, preserving visual consistency. Include ALL participating characters in the characters array.
 
 2. Maximum 3 characters per scene. Fewer is better for compositing quality — 1-2 characters produce the best results. If a scene logically involves more, focus on the 2-3 most important.
 
@@ -231,11 +228,9 @@ CRITICAL SCENE RULES (ZERO TOLERANCE)
 
 10. SCENE CONTINUITY — when splitting a conversation or long passage into multiple scenes at the same location AND same camera angle, use the SAME set_id and COPY-PASTE the scene_image_prompt IDENTICALLY, character-for-character. Each prompt goes to a separate API call with no memory — even tiny wording changes produce a visually different background. If the camera angle genuinely changes within the same set (e.g. switching from a front-row view to a stage view), then a different scene_image_prompt is appropriate. But for alternating dialogue turns at the same spot, the background MUST be identical. NEVER write "Same...", "Similar...", "As before...".
 
-EXAMPLE — correct 3-scene dialogue split at the same camera angle (notice IDENTICAL scene_image_prompt):
-scene_12: { set_id: "set_02", scene_image_prompt: "Corner booth area of dimly lit jazz bar with red leather seating, brass table lamps casting warm pools of light, exposed brick wall with framed photos, polished dark wood floor, vertical 9:16 framing", dialogue: [{ character: "char_01", line: "I haven't seen you in years." }] }
-scene_13: { set_id: "set_02", scene_image_prompt: "Corner booth area of dimly lit jazz bar with red leather seating, brass table lamps casting warm pools of light, exposed brick wall with framed photos, polished dark wood floor, vertical 9:16 framing", dialogue: [{ character: "char_02", line: "And whose fault is that?" }] }
-scene_14: { set_id: "set_02", scene_image_prompt: "Corner booth area of dimly lit jazz bar with red leather seating, brass table lamps casting warm pools of light, exposed brick wall with framed photos, polished dark wood floor, vertical 9:16 framing", dialogue: [{ character: "char_01", line: "Mine. I know." }] }
-↑ All three prompts are CHARACTER-FOR-CHARACTER identical. Do NOT rephrase, reword, or add variety. Literally copy-paste.
+EXAMPLE — multi-speaker dialogue in a single scene (auto-split into per-turn sub-scenes sharing one composite):
+scene_12: { set_id: "set_02", characters: ["char_01", "char_02"], scene_image_prompt: "Corner booth area of dimly lit jazz bar with red leather seating, brass table lamps casting warm pools of light, exposed brick wall with framed photos, polished dark wood floor, vertical 9:16 framing", animation_prompt: "POSITIONS: char_01 full name sits at left-third of the booth. char_02 full name sits at right-third.\nMOTION: Both characters face each other across the table, expressions shifting as they talk.\nCAMERA: Static medium shot.", dialogue: [{ character: "char_01", line: "I haven't seen you in years." }, { character: "char_02", line: "And whose fault is that?" }, { character: "char_01", line: "Mine. I know." }] }
+↑ The pipeline auto-splits this into scene_12a, scene_12b, scene_12c — all sharing one composite with both characters, each turn getting its own audio and video.
 
 11. NO DURATION FIELD — scenes do not have a fixed duration. Video length is determined automatically: dialogue and narration scenes match their TTS audio length, silent scenes default to ~5 seconds.
 

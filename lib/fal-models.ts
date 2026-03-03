@@ -1,12 +1,12 @@
 export const STYLE_T2I_MODEL = "fal-ai/nano-banana-2";
 export const IMAGE_EDIT_MODEL = "fal-ai/nano-banana-2/edit";
-export const VIDEO_AUDIO_MODEL = "fal-ai/ltx-2-19b/audio-to-video";
-export const VIDEO_IMAGE_MODEL = "fal-ai/ltx-2-19b/image-to-video";
+export const VIDEO_AUDIO_MODEL = "fal-ai/ltx-2-19b/distilled/audio-to-video";
+export const VIDEO_IMAGE_MODEL = "fal-ai/ltx-2-19b/distilled/image-to-video";
 export const TTS_MODEL = "fal-ai/minimax/speech-2.8-turbo";
 
 export const NARRATOR_VOICE_ID = "English_CaptivatingStoryteller";
 
-const FEMALE_VOICES = [
+export const FEMALE_VOICES = [
   "English_ConfidentWoman",
   "English_Graceful_Lady",
   "English_radiant_girl",
@@ -17,7 +17,7 @@ const FEMALE_VOICES = [
   "English_compelling_lady1",
 ] as const;
 
-const MALE_VOICES = [
+export const MALE_VOICES = [
   "English_magnetic_voiced_man",
   "English_ReservedYoungMan",
   "English_ManWithDeepVoice",

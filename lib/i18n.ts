@@ -230,6 +230,25 @@ const translations: Record<string, TranslationEntry> = {
   narration_text: { en: "Narration", tr: "Anlatı" },
   narration_mux_info: { en: "Narration baked into video", tr: "Anlatı videoya gömülür" },
 
+  // Batch generation & progress
+  generate_all_composites: { en: "Generate All Composites", tr: "Tüm Kompozitleri Oluştur" },
+  generate_all_audio: { en: "Generate All Audio", tr: "Tüm Sesleri Oluştur" },
+  generate_all_videos: { en: "Generate All Videos", tr: "Tüm Videoları Oluştur" },
+  run_full_pipeline: { en: "Run Full Pipeline", tr: "Tüm Pipeline'ı Çalıştır" },
+  pipeline_running: { en: "Pipeline running...", tr: "Pipeline çalışıyor..." },
+  progress_backgrounds: { en: "Backgrounds", tr: "Arka Planlar" },
+  progress_composites: { en: "Composites", tr: "Kompozitler" },
+  progress_audio: { en: "Audio", tr: "Ses" },
+  progress_videos: { en: "Videos", tr: "Videolar" },
+  pipeline_step_label: { en: "Step", tr: "Adım" },
+  stop_pipeline: { en: "Stop", tr: "Durdur" },
+  storyboard: { en: "Storyboard", tr: "Storyboard" },
+  storyboard_title: { en: "Storyboard", tr: "Storyboard" },
+  storyboard_desc: { en: "Visual overview of all scenes", tr: "Tüm sahnelerin görsel özeti" },
+  open_in_editor: { en: "Open in Editor", tr: "Editörde Aç" },
+  no_content: { en: "No dialogue or narration", tr: "Diyalog veya anlatı yok" },
+  videos_count: { en: "videos", tr: "video" },
+
   // Style prompt errors
   style_prompt_save_failed: { en: "Failed to save style prompt", tr: "Stil komutu kaydedilemedi" },
   style_prompt_required: { en: "Style prompt is required to generate a style image", tr: "Stil görseli oluşturmak için stil komutu gerekli" },

@@ -1,5 +1,4 @@
 import { PipelineJSON, Scene, StorySet } from "@/types/pipeline";
-import { getCharacterVoiceId, NARRATOR_VOICE_ID, inferGender } from "@/lib/fal-models";
 
 export type ViolationSeverity = "error" | "warning";
 
@@ -251,26 +250,10 @@ export function validatePipeline(pipeline: PipelineJSON): ValidationResult {
     }
   }
 
-  // ── Voice assignment ──
-  const genderCounters: Record<string, number> = { female: 0, male: 0, unknown: 0 };
-
+  // ── Strip any LLM-produced voice_url (field removed from schema) ──
   for (let i = 0; i < fixed.characters.length; i++) {
-    const char = fixed.characters[i];
-    const gender = inferGender(char.image_generation_prompt, char.name);
-    const genderIndex = genderCounters[gender];
-    genderCounters[gender]++;
-    const correctVoice = getCharacterVoiceId(genderIndex, char.image_generation_prompt, char.name);
-    if (char.voice_url && char.voice_url !== correctVoice) {
-      violations.push({
-        characterId: char.id,
-        field: "voice_url",
-        rule: "voice-override",
-        message: `LLM assigned voice "${char.voice_url}" — overridden with gender-appropriate "${correctVoice}" (inferred: ${gender}).`,
-        severity: "warning",
-        autoFixed: true,
-      });
-    }
-    fixed.characters[i].voice_url = correctVoice;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    delete (fixed.characters[i] as any).voice_url;
   }
 
   // ── Sets validation ──
@@ -699,26 +682,33 @@ export function validatePipeline(pipeline: PipelineJSON): ValidationResult {
     const origPositions = getPositionsSection(scene.animation_prompt) || "";
     const origCamera = scene.animation_prompt.match(/CAMERA:\s*([\s\S]*?)$/i)?.[1]?.trim() || "Static medium shot with subtle handheld drift.";
 
+    // Build a positions block that covers ALL characters in the original scene
+    const allCharNames = scene.characters.map((cid) => charMap.get(cid) || cid);
+    const allCharsHavePositions = allCharNames.every((name) =>
+      origPositions.toLowerCase().includes(name.toLowerCase()) ||
+      name.toLowerCase().split(/\s+/).some((p) => p.length >= 3 && origPositions.toLowerCase().includes(p))
+    );
+    const groupPositions = allCharsHavePositions
+      ? origPositions
+      : allCharNames.map((n, ni) => {
+          const slot = ni === 0 ? "left-third" : ni === 1 ? "right-third" : "center";
+          return `${n} stands at ${slot}.`;
+        }).join(" ");
+
     const splitScenes: Scene[] = turns.map((turn, turnIdx) => {
       const charName = charMap.get(turn.character) || turn.character;
       const suffix = String.fromCharCode(97 + turnIdx);
-
-      const hasOrigPositionForChar = origPositions.toLowerCase().includes(charName.toLowerCase()) ||
-        charName.toLowerCase().split(/\s+/).some((p) => p.length >= 3 && origPositions.toLowerCase().includes(p));
-
-      const positionLine = hasOrigPositionForChar
-        ? origPositions
-        : `${charName} stands in center-frame.`;
 
       return {
         id: `${scene.id}${suffix}`,
         title: `${scene.title} (${charName})`,
         set_id: scene.set_id,
-        characters: [turn.character],
+        characters: scene.characters,
         scene_image_prompt: scene.scene_image_prompt,
-        animation_prompt: `POSITIONS: ${positionLine}\nMOTION: ${charName} reacts and delivers the line with natural expression, lips moving as the character speaks.\nCAMERA: ${origCamera}`,
+        animation_prompt: `POSITIONS: ${groupPositions}\nMOTION: ${charName} reacts and delivers the line with natural expression, lips moving as the character speaks.\nCAMERA: ${origCamera}`,
         dialogue: turn.lines,
         narration: "",
+        dialogue_group: scene.id,
       };
     });
 

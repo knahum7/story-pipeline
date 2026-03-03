@@ -24,10 +24,13 @@ import {
   Volume2,
   Layers,
   MapPin,
+  Square,
+  LayoutGrid,
 } from "lucide-react";
 import { useLanguage } from "@/lib/language-context";
 import { PipelineJSON, Scene, StorySet } from "@/types/pipeline";
 import { NARRATOR_VOICE_ID } from "@/lib/fal-models";
+import { transformToVideoPrompt, buildCharacterGenders } from "@/lib/video-prompt";
 
 interface SceneImage {
   id: string;
@@ -185,10 +188,34 @@ export default function ScenesPage() {
   const [generatingCustomScene, setGeneratingCustomScene] = useState(false);
   const [sceneAiHelpLoading, setSceneAiHelpLoading] = useState(false);
 
+  const [characterVoices, setCharacterVoices] = useState<Record<string, string>>({});
+
+  const [pipelineRunning, setPipelineRunning] = useState(false);
+  const [pipelineStep, setPipelineStep] = useState("");
+  const [pipelineProgress, setPipelineProgress] = useState({ current: 0, total: 0 });
+  const pipelineCancelRef = useRef(false);
+
   const overlayRef = useRef<HTMLDivElement>(null);
 
   const allCharacters = useMemo(() => pipeline?.characters || [], [pipeline]);
   const allSets = useMemo(() => pipeline?.sets || [], [pipeline]);
+
+  const progress = useMemo(() => {
+    const scenes = pipeline?.scenes || [];
+    const total = scenes.length;
+    const sceneIds = new Set(scenes.map((s) => s.id));
+    const bgSceneIds = new Set(sceneImages.filter((i) => sceneIds.has(i.scene_id)).map((i) => i.scene_id));
+    const compSceneIds = new Set(sceneComposites.filter((c) => sceneIds.has(c.scene_id)).map((c) => c.scene_id));
+    const audioSceneIds = new Set(sceneAudioList.filter((a) => sceneIds.has(a.scene_id)).map((a) => a.scene_id));
+    const videoSceneIds = new Set(sceneVideos.filter((v) => sceneIds.has(v.scene_id)).map((v) => v.scene_id));
+    return {
+      total,
+      backgrounds: bgSceneIds.size,
+      composites: compSceneIds.size,
+      audio: audioSceneIds.size,
+      videos: videoSceneIds.size,
+    };
+  }, [pipeline, sceneImages, sceneComposites, sceneAudioList, sceneVideos]);
 
   const getCharName = useCallback(
     (charId: string): string => {
@@ -210,16 +237,27 @@ export default function ScenesPage() {
     [allCharImages]
   );
 
+  const getDialogueGroupSiblings = useCallback(
+    (scene: Scene): Scene[] => {
+      if (!scene.dialogue_group || !pipeline?.scenes) return [];
+      return pipeline.scenes.filter(
+        (s) => s.dialogue_group === scene.dialogue_group && s.id !== scene.id,
+      );
+    },
+    [pipeline],
+  );
+
   useEffect(() => {
     const load = async () => {
       try {
-        const [pipelineRes, scenesRes, charsRes, videosRes, compositesRes, audioRes] = await Promise.all([
+        const [pipelineRes, scenesRes, charsRes, videosRes, compositesRes, audioRes, voicesRes] = await Promise.all([
           fetch(`/api/pipelines/${pipelineId}`),
           fetch(`/api/scenes?pipeline_id=${pipelineId}`),
           fetch(`/api/characters?pipeline_id=${pipelineId}`),
           fetch(`/api/scenes/videos?pipeline_id=${pipelineId}`).catch(() => null),
           fetch(`/api/scenes/composites?pipeline_id=${pipelineId}`).catch(() => null),
           fetch(`/api/scenes/audio?pipeline_id=${pipelineId}`).catch(() => null),
+          fetch(`/api/character-voices?pipeline_id=${pipelineId}`).catch(() => null),
         ]);
 
         if (!pipelineRes.ok) throw new Error("Failed to load pipeline");
@@ -243,9 +281,13 @@ export default function ScenesPage() {
         }
         setEditedSetPrompts(setPrompts);
 
+        let loadedImages: SceneImage[] = [];
+        let loadedComposites: SceneComposite[] = [];
+
         if (scenesRes.ok) {
           const sData = await scenesRes.json();
-          setSceneImages(sData.scenes || []);
+          loadedImages = sData.scenes || [];
+          setSceneImages(loadedImages);
         }
 
         if (charsRes.ok) {
@@ -260,13 +302,43 @@ export default function ScenesPage() {
 
         if (compositesRes?.ok) {
           const compData = await compositesRes.json();
-          setSceneComposites(compData.composites || []);
+          loadedComposites = compData.composites || [];
+          setSceneComposites(loadedComposites);
         }
 
         if (audioRes?.ok) {
           const aData = await audioRes.json();
           setSceneAudioList(aData.audio || []);
         }
+
+        if (voicesRes?.ok) {
+          const vData = await voicesRes.json();
+          const voiceMap: Record<string, string> = {};
+          for (const v of vData.voices || []) {
+            voiceMap[v.character_id] = v.voice_id;
+          }
+          setCharacterVoices(voiceMap);
+        }
+
+        // Auto-resume: select latest background and composite per scene
+        const scenes = pipelineData?.scenes || [];
+        const autoSelectedBg: Record<string, string> = {};
+        for (const scene of scenes) {
+          const imgs = loadedImages
+            .filter((img) => img.scene_id === scene.id)
+            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+          if (imgs.length > 0) autoSelectedBg[scene.id] = imgs[0].id;
+        }
+        if (Object.keys(autoSelectedBg).length > 0) setSelectedImagePerScene(autoSelectedBg);
+
+        const autoSelectedComp: Record<string, string> = {};
+        for (const scene of scenes) {
+          const comps = loadedComposites
+            .filter((c) => c.scene_id === scene.id)
+            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+          if (comps.length > 0) autoSelectedComp[scene.id] = comps[0].id;
+        }
+        if (Object.keys(autoSelectedComp).length > 0) setSelectedCompositePerScene(autoSelectedComp);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load");
       } finally {
@@ -315,15 +387,40 @@ export default function ScenesPage() {
           throw new Error(err.error || "Generation failed");
         }
         const newImage: SceneImage = await res.json();
-        setSceneImages((prev) => [...prev, newImage]);
+        const allNewImages: SceneImage[] = [newImage];
         setSelectedImagePerScene((prev) => ({ ...prev, [scene.id]: newImage.id }));
+
+        // Duplicate background for dialogue group siblings
+        const siblings = getDialogueGroupSiblings(scene);
+        for (const sib of siblings) {
+          try {
+            const dupRes = await fetch("/api/scenes/duplicate-asset", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                pipelineId,
+                sourceSceneId: scene.id,
+                targetSceneId: sib.id,
+                assetType: "scene_images",
+                sourceAssetId: newImage.id,
+              }),
+            });
+            if (dupRes.ok) {
+              const dupImage: SceneImage = await dupRes.json();
+              allNewImages.push(dupImage);
+              setSelectedImagePerScene((prev) => ({ ...prev, [sib.id]: dupImage.id }));
+            }
+          } catch { /* sibling duplication is best-effort */ }
+        }
+
+        setSceneImages((prev) => [...prev, ...allNewImages]);
       } catch (err) {
         alert(err instanceof Error ? err.message : t("generation_failed"));
       } finally {
         setGenerating((prev) => ({ ...prev, [scene.id]: false }));
       }
     },
-    [pipelineId, editedPrompts, getSetImageUrl, t]
+    [pipelineId, editedPrompts, getSetImageUrl, getDialogueGroupSiblings, t]
   );
 
   const generateSetImage = useCallback(
@@ -372,6 +469,35 @@ export default function ScenesPage() {
 
   const generateComposite = useCallback(
     async (scene: Scene) => {
+      // For dialogue groups, check if a sibling already has a composite we can reuse
+      const siblings = getDialogueGroupSiblings(scene);
+      if (scene.dialogue_group && siblings.length > 0) {
+        const siblingComp = sceneComposites.find((c) =>
+          siblings.some((s) => s.id === c.scene_id) || c.scene_id === scene.id,
+        );
+        if (siblingComp && !sceneComposites.some((c) => c.scene_id === scene.id)) {
+          try {
+            const dupRes = await fetch("/api/scenes/duplicate-asset", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                pipelineId,
+                sourceSceneId: siblingComp.scene_id,
+                targetSceneId: scene.id,
+                assetType: "scene_composites",
+                sourceAssetId: siblingComp.id,
+              }),
+            });
+            if (dupRes.ok) {
+              const dupComp: SceneComposite = await dupRes.json();
+              setSceneComposites((prev) => [...prev, dupComp]);
+              setSelectedCompositePerScene((prev) => ({ ...prev, [scene.id]: dupComp.id }));
+              return;
+            }
+          } catch { /* fall through to generate */ }
+        }
+      }
+
       const selectedBgId = selectedImagePerScene[scene.id];
       if (!selectedBgId) {
         alert(t("select_background_first"));
@@ -409,15 +535,39 @@ export default function ScenesPage() {
           throw new Error(err.error || "Composite failed");
         }
         const newComposite: SceneComposite = await res.json();
-        setSceneComposites((prev) => [...prev, newComposite]);
+        const allNewComposites: SceneComposite[] = [newComposite];
         setSelectedCompositePerScene((prev) => ({ ...prev, [scene.id]: newComposite.id }));
+
+        // Duplicate composite for dialogue group siblings
+        for (const sib of siblings) {
+          try {
+            const dupRes = await fetch("/api/scenes/duplicate-asset", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                pipelineId,
+                sourceSceneId: scene.id,
+                targetSceneId: sib.id,
+                assetType: "scene_composites",
+                sourceAssetId: newComposite.id,
+              }),
+            });
+            if (dupRes.ok) {
+              const dupComp: SceneComposite = await dupRes.json();
+              allNewComposites.push(dupComp);
+              setSelectedCompositePerScene((prev) => ({ ...prev, [sib.id]: dupComp.id }));
+            }
+          } catch { /* sibling duplication is best-effort */ }
+        }
+
+        setSceneComposites((prev) => [...prev, ...allNewComposites]);
       } catch (err) {
         alert(err instanceof Error ? err.message : t("generation_failed"));
       } finally {
         setGeneratingComposite((prev) => ({ ...prev, [scene.id]: false }));
       }
     },
-    [pipelineId, selectedImagePerScene, sceneImages, getCharPortrait, getCharName, editedAnimPrompts, t]
+    [pipelineId, selectedImagePerScene, sceneImages, sceneComposites, getCharPortrait, getCharName, getDialogueGroupSiblings, editedAnimPrompts, t]
   );
 
   const generateAudio = useCallback(
@@ -432,14 +582,11 @@ export default function ScenesPage() {
       const speakingCharId = hasDialogue ? scene.dialogue[0]?.character : null;
 
       let voiceId: string | null = null;
-      if (speakingCharId && allCharacters.length > 0) {
-        const char = allCharacters.find((c) => c.id === speakingCharId);
-        if (char?.voice_url) {
-          voiceId = char.voice_url;
-        }
+      if (speakingCharId && characterVoices[speakingCharId]) {
+        voiceId = characterVoices[speakingCharId];
       }
       if (!voiceId && !speakingCharId) {
-        voiceId = NARRATOR_VOICE_ID;
+        voiceId = characterVoices["__narrator__"] || NARRATOR_VOICE_ID;
       }
 
       setGeneratingAudio((prev) => ({ ...prev, [scene.id]: true }));
@@ -467,7 +614,12 @@ export default function ScenesPage() {
         setGeneratingAudio((prev) => ({ ...prev, [scene.id]: false }));
       }
     },
-    [pipelineId, allCharacters, t]
+    [pipelineId, characterVoices, t]
+  );
+
+  const charGenders = useMemo(
+    () => pipeline ? buildCharacterGenders(pipeline.characters) : [],
+    [pipeline],
   );
 
   const generateVideo = useCallback(
@@ -513,6 +665,24 @@ export default function ScenesPage() {
         return;
       }
 
+      // Transform structured prompt into natural language for LTX-2
+      const speakingChar = hasDialogue ? scene.dialogue[0]?.character : null;
+      const speakingName = speakingChar
+        ? pipeline?.characters.find((c) => c.id === speakingChar)?.name
+        : undefined;
+      const sceneCharGenders = charGenders.filter((cg) =>
+        scene.characters.some((cid) => {
+          const name = pipeline?.characters.find((c) => c.id === cid)?.name;
+          return name === cg.name;
+        }),
+      );
+      const { prompt: videoPrompt, cameraLora } = transformToVideoPrompt(
+        animPrompt,
+        sceneCharGenders,
+        hasDialogue,
+        speakingName,
+      );
+
       setGeneratingVideo((prev) => ({ ...prev, [scene.id]: true }));
       try {
         const res = await fetch("/api/scenes/generate-video", {
@@ -523,8 +693,9 @@ export default function ScenesPage() {
             sceneId: scene.id,
             compositeImageId: imageId,
             compositeImageUrl: imageUrl,
-            animationPrompt: animPrompt,
+            animationPrompt: videoPrompt,
             audioUrl: latestAudio?.audio_url || null,
+            cameraLora,
           }),
         });
         if (!res.ok) {
@@ -539,17 +710,162 @@ export default function ScenesPage() {
         setGeneratingVideo((prev) => ({ ...prev, [scene.id]: false }));
       }
     },
-    [pipelineId, selectedCompositePerScene, sceneComposites, selectedImagePerScene, sceneImages, editedAnimPrompts, sceneAudioList, t]
+    [pipelineId, selectedCompositePerScene, sceneComposites, selectedImagePerScene, sceneImages, editedAnimPrompts, sceneAudioList, pipeline, charGenders, t]
   );
 
   const generateAllScenes = useCallback(async () => {
     if (!pipeline?.scenes) return;
     setGeneratingAll(true);
+    const generatedGroups = new Set<string>();
     for (const scene of pipeline.scenes) {
-      await generateScene(scene);
+      if (pipelineCancelRef.current) break;
+      // For dialogue groups, only generate for the first scene (siblings get duplicated automatically)
+      if (scene.dialogue_group) {
+        if (generatedGroups.has(scene.dialogue_group)) continue;
+        generatedGroups.add(scene.dialogue_group);
+      }
+      const existing = sceneImages.some((i) => i.scene_id === scene.id);
+      if (!existing) await generateScene(scene);
     }
     setGeneratingAll(false);
-  }, [pipeline, generateScene]);
+  }, [pipeline, generateScene, sceneImages]);
+
+  const generateAllComposites = useCallback(async () => {
+    if (!pipeline?.scenes) return;
+    setGeneratingAll(true);
+    const generatedGroups = new Set<string>();
+    for (const scene of pipeline.scenes) {
+      if (pipelineCancelRef.current) break;
+      const hasChars = (scene.characters?.length || 0) > 0;
+      const hasBg = !!selectedImagePerScene[scene.id];
+      const alreadyDone = sceneComposites.some((c) => c.scene_id === scene.id);
+      // For dialogue groups, only generate for the first scene (siblings get duplicated by generateComposite)
+      if (scene.dialogue_group) {
+        if (generatedGroups.has(scene.dialogue_group)) continue;
+        if (hasChars && hasBg && !alreadyDone) {
+          generatedGroups.add(scene.dialogue_group);
+          await generateComposite(scene);
+        }
+      } else if (hasChars && hasBg && !alreadyDone) {
+        await generateComposite(scene);
+      }
+    }
+    setGeneratingAll(false);
+  }, [pipeline, generateComposite, selectedImagePerScene, sceneComposites]);
+
+  const generateAllAudioBatch = useCallback(async () => {
+    if (!pipeline?.scenes) return;
+    setGeneratingAll(true);
+    for (const scene of pipeline.scenes) {
+      if (pipelineCancelRef.current) break;
+      const hasContent = (scene.dialogue?.length || 0) > 0 || !!scene.narration;
+      const alreadyDone = sceneAudioList.some((a) => a.scene_id === scene.id);
+      if (hasContent && !alreadyDone) {
+        await generateAudio(scene);
+      }
+    }
+    setGeneratingAll(false);
+  }, [pipeline, generateAudio, sceneAudioList]);
+
+  const generateAllVideosBatch = useCallback(async () => {
+    if (!pipeline?.scenes) return;
+    setGeneratingAll(true);
+    for (const scene of pipeline.scenes) {
+      if (pipelineCancelRef.current) break;
+      const hasChars = (scene.characters?.length || 0) > 0;
+      const imageReady = hasChars
+        ? !!selectedCompositePerScene[scene.id]
+        : !!selectedImagePerScene[scene.id];
+      const hasContent = (scene.dialogue?.length || 0) > 0 || !!scene.narration;
+      const hasAudio = sceneAudioList.some((a) => a.scene_id === scene.id);
+      const alreadyDone = sceneVideos.some((v) => v.scene_id === scene.id);
+      if (imageReady && (!hasContent || hasAudio) && !alreadyDone) {
+        await generateVideo(scene);
+      }
+    }
+    setGeneratingAll(false);
+  }, [pipeline, generateVideo, selectedCompositePerScene, selectedImagePerScene, sceneAudioList, sceneVideos]);
+
+  const runFullPipeline = useCallback(async () => {
+    if (!pipeline?.scenes) return;
+    setPipelineRunning(true);
+    pipelineCancelRef.current = false;
+
+    const scenes = pipeline.scenes;
+    const total = scenes.length;
+
+    // Step 1: Backgrounds (dialogue groups generate once, siblings get duplicated by generateScene)
+    const bgGroups = new Set<string>();
+    setPipelineStep(t("progress_backgrounds"));
+    for (let i = 0; i < scenes.length; i++) {
+      if (pipelineCancelRef.current) break;
+      setPipelineProgress({ current: i + 1, total });
+      if (scenes[i].dialogue_group) {
+        if (bgGroups.has(scenes[i].dialogue_group!)) continue;
+        bgGroups.add(scenes[i].dialogue_group!);
+      }
+      const existing = sceneImages.some((img) => img.scene_id === scenes[i].id);
+      if (!existing) await generateScene(scenes[i]);
+    }
+
+    // Step 2: Composites (dialogue groups generate once, siblings get duplicated by generateComposite)
+    const compGroups = new Set<string>();
+    if (!pipelineCancelRef.current) {
+      setPipelineStep(t("progress_composites"));
+      for (let i = 0; i < scenes.length; i++) {
+        if (pipelineCancelRef.current) break;
+        setPipelineProgress({ current: i + 1, total });
+        const scene = scenes[i];
+        if (scene.dialogue_group) {
+          if (compGroups.has(scene.dialogue_group)) continue;
+          compGroups.add(scene.dialogue_group);
+        }
+        const hasChars = (scene.characters?.length || 0) > 0;
+        const hasBg = !!selectedImagePerScene[scene.id];
+        const alreadyDone = sceneComposites.some((c) => c.scene_id === scene.id);
+        if (hasChars && hasBg && !alreadyDone) await generateComposite(scene);
+      }
+    }
+
+    // Step 3: Audio
+    if (!pipelineCancelRef.current) {
+      setPipelineStep(t("progress_audio"));
+      for (let i = 0; i < scenes.length; i++) {
+        if (pipelineCancelRef.current) break;
+        setPipelineProgress({ current: i + 1, total });
+        const scene = scenes[i];
+        const hasContent = (scene.dialogue?.length || 0) > 0 || !!scene.narration;
+        const alreadyDone = sceneAudioList.some((a) => a.scene_id === scene.id);
+        if (hasContent && !alreadyDone) await generateAudio(scene);
+      }
+    }
+
+    // Step 4: Videos
+    if (!pipelineCancelRef.current) {
+      setPipelineStep(t("progress_videos"));
+      for (let i = 0; i < scenes.length; i++) {
+        if (pipelineCancelRef.current) break;
+        setPipelineProgress({ current: i + 1, total });
+        const scene = scenes[i];
+        const hasChars = (scene.characters?.length || 0) > 0;
+        const imageReady = hasChars
+          ? !!selectedCompositePerScene[scene.id]
+          : !!selectedImagePerScene[scene.id];
+        const hasContent = (scene.dialogue?.length || 0) > 0 || !!scene.narration;
+        const hasAudio = sceneAudioList.some((a) => a.scene_id === scene.id);
+        const alreadyDone = sceneVideos.some((v) => v.scene_id === scene.id);
+        if (imageReady && (!hasContent || hasAudio) && !alreadyDone) await generateVideo(scene);
+      }
+    }
+
+    setPipelineRunning(false);
+    setPipelineStep("");
+    setPipelineProgress({ current: 0, total: 0 });
+  }, [pipeline, generateScene, generateComposite, generateAudio, generateVideo, sceneImages, sceneComposites, sceneAudioList, sceneVideos, selectedImagePerScene, selectedCompositePerScene, t]);
+
+  const stopPipeline = useCallback(() => {
+    pipelineCancelRef.current = true;
+  }, []);
 
   const deleteSceneImage = useCallback(
     async (id: string) => {
@@ -843,27 +1159,20 @@ export default function ScenesPage() {
           </div>
 
           <div className="flex items-center gap-3 flex-wrap">
+            <Link
+              href={`/storyboard/${pipelineId}`}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm border border-violet-800/30 text-violet-400 hover:bg-violet-900/10 transition-colors"
+            >
+              <LayoutGrid size={14} />
+              <span>{t("storyboard")}</span>
+            </Link>
+
             <button
               onClick={() => setShowAddSceneModal(true)}
               className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm border border-emerald-800/30 text-emerald-400 hover:bg-emerald-900/10 transition-colors"
             >
               <Plus size={14} />
               <span>{t("add_custom_scene")}</span>
-            </button>
-
-            <button
-              onClick={generateAllScenes}
-              disabled={generatingAll || !pipeline.scenes?.length || !hasStyleImage}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-900/20 border border-emerald-800/30 text-emerald-400 hover:bg-emerald-900/30 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {generatingAll ? (
-                <Loader2 size={14} className="animate-spin" />
-              ) : (
-                <Sparkles size={14} />
-              )}
-              <span>
-                {generatingAll ? t("generating_all_scenes") : t("generate_all_backgrounds")}
-              </span>
             </button>
           </div>
         </div>
@@ -997,6 +1306,123 @@ export default function ScenesPage() {
                   </div>
                 );
               })}
+            </div>
+          </div>
+        )}
+
+        {/* Progress Dashboard */}
+        {progress.total > 0 && (
+          <div className="mb-8 bg-ink-soft border border-ink-muted rounded-2xl overflow-hidden">
+            <div className="px-6 py-4 border-b border-ink-muted/50">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Layers size={16} className="text-amber-film" />
+                  <h3 className="text-sm font-semibold text-parchment/70">Pipeline Progress</h3>
+                  <span className="text-[10px] text-parchment/30 font-mono">{progress.total} scenes</span>
+                </div>
+                {pipelineRunning ? (
+                  <button
+                    onClick={stopPipeline}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-red-900/20 border border-red-800/30 text-red-400 hover:bg-red-900/30 transition-colors"
+                  >
+                    <Square size={10} />
+                    <span>{t("stop_pipeline")}</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={runFullPipeline}
+                    disabled={generatingAll || !hasStyleImage}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-amber-film/10 border border-amber-film/20 text-amber-glow hover:bg-amber-film/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Play size={10} />
+                    <span>{t("run_full_pipeline")}</span>
+                  </button>
+                )}
+              </div>
+              {pipelineRunning && (
+                <div className="mt-2 flex items-center gap-2 text-[11px] text-amber-glow">
+                  <Loader2 size={12} className="animate-spin" />
+                  <span>{pipelineStep} — {pipelineProgress.current}/{pipelineProgress.total}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="p-6 grid grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Backgrounds */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[10px] text-parchment/30 uppercase tracking-wider font-semibold">{t("progress_backgrounds")}</span>
+                  <span className="text-[10px] text-parchment/50 font-mono">{progress.backgrounds}/{progress.total}</span>
+                </div>
+                <div className="h-1.5 bg-ink rounded-full overflow-hidden mb-2">
+                  <div className="h-full bg-emerald-500 rounded-full transition-all duration-500" style={{ width: `${progress.total ? (progress.backgrounds / progress.total) * 100 : 0}%` }} />
+                </div>
+                <button
+                  onClick={generateAllScenes}
+                  disabled={generatingAll || !hasStyleImage || progress.backgrounds >= progress.total}
+                  className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[10px] bg-emerald-900/20 border border-emerald-800/30 text-emerald-400 hover:bg-emerald-900/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {generatingAll && !pipelineRunning ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
+                  <span>{t("generate_all_backgrounds")}</span>
+                </button>
+              </div>
+
+              {/* Composites */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[10px] text-parchment/30 uppercase tracking-wider font-semibold">{t("progress_composites")}</span>
+                  <span className="text-[10px] text-parchment/50 font-mono">{progress.composites}/{progress.total}</span>
+                </div>
+                <div className="h-1.5 bg-ink rounded-full overflow-hidden mb-2">
+                  <div className="h-full bg-amber-500 rounded-full transition-all duration-500" style={{ width: `${progress.total ? (progress.composites / progress.total) * 100 : 0}%` }} />
+                </div>
+                <button
+                  onClick={generateAllComposites}
+                  disabled={generatingAll || progress.backgrounds === 0}
+                  className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[10px] bg-amber-900/20 border border-amber-800/30 text-amber-400 hover:bg-amber-900/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <Sparkles size={10} />
+                  <span>{t("generate_all_composites")}</span>
+                </button>
+              </div>
+
+              {/* Audio */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[10px] text-parchment/30 uppercase tracking-wider font-semibold">{t("progress_audio")}</span>
+                  <span className="text-[10px] text-parchment/50 font-mono">{progress.audio}/{progress.total}</span>
+                </div>
+                <div className="h-1.5 bg-ink rounded-full overflow-hidden mb-2">
+                  <div className="h-full bg-cyan-500 rounded-full transition-all duration-500" style={{ width: `${progress.total ? (progress.audio / progress.total) * 100 : 0}%` }} />
+                </div>
+                <button
+                  onClick={generateAllAudioBatch}
+                  disabled={generatingAll}
+                  className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[10px] bg-cyan-900/20 border border-cyan-800/30 text-cyan-400 hover:bg-cyan-900/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <Sparkles size={10} />
+                  <span>{t("generate_all_audio")}</span>
+                </button>
+              </div>
+
+              {/* Videos */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[10px] text-parchment/30 uppercase tracking-wider font-semibold">{t("progress_videos")}</span>
+                  <span className="text-[10px] text-parchment/50 font-mono">{progress.videos}/{progress.total}</span>
+                </div>
+                <div className="h-1.5 bg-ink rounded-full overflow-hidden mb-2">
+                  <div className="h-full bg-violet-500 rounded-full transition-all duration-500" style={{ width: `${progress.total ? (progress.videos / progress.total) * 100 : 0}%` }} />
+                </div>
+                <button
+                  onClick={generateAllVideosBatch}
+                  disabled={generatingAll || progress.backgrounds === 0}
+                  className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[10px] bg-violet-900/20 border border-violet-800/30 text-violet-400 hover:bg-violet-900/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <Sparkles size={10} />
+                  <span>{t("generate_all_videos")}</span>
+                </button>
+              </div>
             </div>
           </div>
         )}

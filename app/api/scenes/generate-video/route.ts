@@ -44,6 +44,7 @@ export async function POST(req: NextRequest) {
       compositeImageUrl,
       animationPrompt,
       audioUrl,
+      cameraLora,
     } = await req.json();
 
     if (!pipelineId || !sceneId || !compositeImageUrl || !animationPrompt) {
@@ -75,6 +76,8 @@ export async function POST(req: NextRequest) {
       `[scenes-video] Generating video for ${sceneId} with ${model}${hasAudio ? " + audio" : ""} [${isNarration ? "narration" : "dialogue"}], prompt: ${animationPrompt.slice(0, 150)}...`
     );
 
+    const resolvedCameraLora = cameraLora && cameraLora !== "none" ? cameraLora : undefined;
+
     const input: Record<string, unknown> = {
       prompt: animationPrompt,
       negative_prompt: negativePrompt,
@@ -87,6 +90,7 @@ export async function POST(req: NextRequest) {
       video_quality: "high",
       video_output_type: "X264 (.mp4)",
       enable_prompt_expansion: false,
+      ...(resolvedCameraLora && { camera_lora: resolvedCameraLora }),
     };
 
     if (hasAudio) {

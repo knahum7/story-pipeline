@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Clock, FileText, Image, ChevronRight, ArrowLeft, Download, RefreshCw, Loader2, Users, Film } from "lucide-react";
+import { Clock, FileText, Image, ChevronRight, ArrowLeft, Download, RefreshCw, Loader2, Users, Film, LayoutGrid } from "lucide-react";
 import Link from "next/link";
 import ResultsViewer from "@/components/ResultsViewer";
 import StreamingOutput from "@/components/StreamingOutput";
@@ -18,6 +18,7 @@ interface PipelineSummary {
   story_char_count: number | null;
   created_at: string;
   total_scenes: number | null;
+  completed_videos: number | null;
 }
 
 export default function HistoryPage() {
@@ -262,9 +263,43 @@ export default function HistoryPage() {
 
                     <div className="flex items-center justify-between text-xs text-parchment/30">
                       <span>{formatDate(p.created_at)}</span>
-                      {p.total_scenes && (
-                        <span>{p.total_scenes} {t("scenes_count")}</span>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {!!p.total_scenes && (
+                          <span>{p.total_scenes} {t("scenes_count")}</span>
+                        )}
+                        {!!p.completed_videos && !!p.total_scenes && (
+                          <span className="text-emerald-400/60">{p.completed_videos}/{p.total_scenes} {t("videos_count")}</span>
+                        )}
+                      </div>
+                    </div>
+                    {!!p.total_scenes && !!p.completed_videos && (
+                      <div className="mt-2 h-1 bg-ink rounded-full overflow-hidden">
+                        <div className="h-full bg-emerald-500/50 rounded-full transition-all" style={{ width: `${(p.completed_videos / p.total_scenes) * 100}%` }} />
+                      </div>
+                    )}
+
+                    <div className="mt-3 flex items-center gap-2 border-t border-ink-muted/30 pt-3" onClick={(e) => e.stopPropagation()}>
+                      <Link
+                        href={`/storyboard/${p.id}`}
+                        className="flex items-center gap-1 text-[10px] px-2 py-1 rounded-md bg-violet-900/20 border border-violet-800/30 text-violet-400 hover:bg-violet-900/30 transition-colors"
+                      >
+                        <LayoutGrid size={10} />
+                        {t("storyboard")}
+                      </Link>
+                      <Link
+                        href={`/characters/${p.id}`}
+                        className="flex items-center gap-1 text-[10px] px-2 py-1 rounded-md bg-ink border border-ink-muted text-parchment/40 hover:text-parchment/60 transition-colors"
+                      >
+                        <Users size={10} />
+                        {t("tab_characters")}
+                      </Link>
+                      <Link
+                        href={`/scenes/${p.id}`}
+                        className="flex items-center gap-1 text-[10px] px-2 py-1 rounded-md bg-ink border border-ink-muted text-parchment/40 hover:text-parchment/60 transition-colors"
+                      >
+                        <Film size={10} />
+                        {t("tab_scenes")}
+                      </Link>
                     </div>
                   </button>
                 ))}

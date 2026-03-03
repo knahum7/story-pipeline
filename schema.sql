@@ -134,6 +134,17 @@ CREATE TABLE IF NOT EXISTS "public"."scene_videos" (
 ALTER TABLE "public"."scene_videos" OWNER TO "postgres";
 
 
+CREATE TABLE IF NOT EXISTS "public"."character_voices" (
+    "pipeline_id" "uuid" NOT NULL,
+    "character_id" "text" NOT NULL,
+    "voice_id" "text" NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."character_voices" OWNER TO "postgres";
+
+
 ALTER TABLE ONLY "public"."characters"
     ADD CONSTRAINT "characters_pkey" PRIMARY KEY ("id");
 
@@ -164,6 +175,10 @@ ALTER TABLE ONLY "public"."scene_videos"
 
 
 
+ALTER TABLE ONLY "public"."character_voices"
+    ADD CONSTRAINT "character_voices_pkey" PRIMARY KEY ("pipeline_id", "character_id");
+
+
 CREATE INDEX "idx_characters_lookup" ON "public"."characters" USING "btree" ("pipeline_id", "character_id");
 
 
@@ -185,6 +200,11 @@ CREATE INDEX "idx_scene_images_lookup" ON "public"."scene_images" USING "btree" 
 
 
 CREATE INDEX "idx_scene_videos_lookup" ON "public"."scene_videos" USING "btree" ("pipeline_id", "scene_id");
+
+
+
+ALTER TABLE ONLY "public"."character_voices"
+    ADD CONSTRAINT "character_voices_pipeline_id_fkey" FOREIGN KEY ("pipeline_id") REFERENCES "public"."pipelines"("id") ON DELETE CASCADE;
 
 
 
@@ -227,6 +247,12 @@ GRANT USAGE ON SCHEMA "public" TO "postgres";
 GRANT USAGE ON SCHEMA "public" TO "anon";
 GRANT USAGE ON SCHEMA "public" TO "authenticated";
 GRANT USAGE ON SCHEMA "public" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."character_voices" TO "anon";
+GRANT ALL ON TABLE "public"."character_voices" TO "authenticated";
+GRANT ALL ON TABLE "public"."character_voices" TO "service_role";
 
 
 
