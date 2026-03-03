@@ -11,7 +11,7 @@ PIPELINE OVERVIEW — understand what happens to each field you produce:
 
 GLOBAL RULES:
 1. NEVER summarize vaguely. Always extract specific visual details from the text.
-2. If a physical detail is NOT stated in the story, make a reasonable inference consistent with the character's personality, era, and tone — mark it as [INFERRED].
+2. If a physical detail is NOT stated in the story, make a reasonable inference consistent with the character's personality, era, and tone. Write inferred details naturally — DO NOT mark them with [INFERRED] or any other bracketed tag, as these are sent literally to the image model.
 3. Preserve ALL dialogue exactly as written. Attribute every line to the correct character ID.
 4. Be consistent: if you name a character char_01, use char_01 everywhere they appear.
 5. Output ONLY valid JSON. No explanations before or after. No markdown code fences. No trailing commas.
@@ -191,7 +191,7 @@ CAMERA: Slow dolly forward along the pier."
 Array of { character: "char_XX", line: "exact quote" }. MUST be empty array [] if narration is used.
 
 CRITICAL RULES:
-- A scene MAY contain dialogue from MULTIPLE characters. Write the full conversation naturally — the pipeline automatically splits multi-speaker scenes into per-speaker turns that share a single composite image. This produces visually consistent dialogue sequences. Include ALL participating characters in the scene's characters array.
+- A scene MAY contain dialogue from MULTIPLE characters. Write the full conversation naturally in a SINGLE scene — the pipeline automatically splits multi-speaker scenes into per-speaker turns that share a single composite image. This produces visually consistent dialogue sequences. Include ALL participating characters in the scene's characters array. DO NOT manually split multi-speaker dialogue into separate scenes yourself — the validator handles this automatically and produces standardized animation prompts for each turn. Simply write ONE scene with all the dialogue turns in order.
 - KEEP EACH CHARACTER'S TURN UNDER 35 WORDS. The text is converted to speech audio, and the video duration matches the audio length. Long monologues (35+ words) produce very long videos that degrade in quality. Split long speeches across multiple scenes with the same speaker.
 - Preserve the exact wording from the source text.
 - Multiple consecutive lines from the SAME character are grouped into one turn for TTS.
@@ -208,7 +208,7 @@ RULES:
 ─────────────────────────────────────────────
 CRITICAL SCENE RULES (ZERO TOLERANCE)
 ─────────────────────────────────────────────
-1. MULTI-SPEAKER DIALOGUE IS ALLOWED — a scene may contain dialogue from multiple characters. The pipeline auto-splits multi-speaker scenes into per-turn sub-scenes that share a single composite image, preserving visual consistency. Include ALL participating characters in the characters array.
+1. MULTI-SPEAKER DIALOGUE IS ALLOWED — a scene may contain dialogue from multiple characters. The pipeline auto-splits multi-speaker scenes into per-turn sub-scenes that share a single composite image, preserving visual consistency. Include ALL participating characters in the characters array. DO NOT split them yourself — write one scene with all turns and let the pipeline handle the rest.
 
 2. Maximum 3 characters per scene. Fewer is better for compositing quality — 1-2 characters produce the best results. If a scene logically involves more, focus on the 2-3 most important.
 
@@ -218,7 +218,7 @@ CRITICAL SCENE RULES (ZERO TOLERANCE)
 
 5. animation_prompt MUST use the labeled POSITIONS/MOTION/CAMERA format. No exceptions. Flowing prose without these labels will break the compositing pipeline.
 
-6. NARRATION SCENES: The MOTION section MUST begin with "No characters are speaking." — this is a technical instruction to the video model, not a creative choice. Without it, the model generates random lip movements on character faces. EVERY narration scene needs this, even when characters are visible in the frame.
+6. NARRATION SCENES: The MOTION section MUST begin with the exact sentence "No characters are speaking." — this is a technical instruction to the video model, not a creative choice. Without it, the model generates random lip movements on character faces. EVERY narration scene needs this, even when characters are visible in the frame. Place it ONLY inside the MOTION section, NEVER before POSITIONS or anywhere else in the prompt.
 
 7. KEEP TEXT SHORT for TTS — dialogue under 35 words, narration under 40 words per scene. If longer, split into multiple scenes. Video quality degrades with duration.
 
@@ -236,7 +236,11 @@ scene_12: { set_id: "set_02", characters: ["char_01", "char_02"], scene_image_pr
 
 12. CORRECT DIALOGUE ATTRIBUTION — if a line is spoken by Norm, it belongs to Norm's character ID, not the character Norm is speaking TO. If a line is spoken by a character not in the characters array, ADD them to the characters array first. NEVER mis-attribute dialogue to make it fit.
 
-13. VISUAL-ONLY PROMPTS — image_generation_prompt, set_image_prompt, and scene_image_prompt must describe ONLY what a camera can capture. No smells ("chlorine scent"), sounds ("birds chirping"), internal thoughts ("feeling anxious"), or non-visual sensory details. The image model has no way to render these and they waste prompt space.`;
+13. VISUAL-ONLY PROMPTS — image_generation_prompt, set_image_prompt, and scene_image_prompt must describe ONLY what a camera can capture. No smells ("chlorine scent"), sounds ("birds chirping"), internal thoughts ("feeling anxious"), or non-visual sensory details. The image model has no way to render these and they waste prompt space.
+
+14. FORBIDDEN FIELDS — scene objects must contain ONLY these fields: id, title, set_id, characters, scene_image_prompt, animation_prompt, dialogue, narration. DO NOT add any other fields. In particular, NEVER produce "dialogue_group", "background_group", or any metadata fields — these are internal pipeline fields assigned automatically by the validator. If you add them, they will be stripped and the validator's own logic will be used instead.
+
+15. DO NOT USE [INFERRED] TAGS IN PROMPTS — when you infer a visual detail not stated in the source text, simply write it naturally into the prompt without any bracketed labels. Tags like "[INFERRED]" are sent literally to the image model and interfere with generation. Just write "simple modest black dress", never "simple [INFERRED] modest black dress".`;
 
 export const buildUserPrompt = (storyText: string): string => {
   const wordCount = storyText.trim().split(/\s+/).length;

@@ -58,7 +58,7 @@ const SUGGESTIVE_MINOR_PATTERNS: [RegExp, string][] = [
   [/\bdrunk\b/i, ""],
 ];
 
-const PEOPLE_WORDS_REGEX = /\b(audience members?|attendees?|well-?wishers?|servers?|waiters?|waitress(?:es)?|patrons?|pedestrians?|passersby|bystanders?|crowd(?:ed|s)?|people|figures?|silhouettes?|strangers?|onlookers?|spectators?|visitors?|guests?|theatergoers?|theater people|professionals?|actors?|diners?|shoppers?|commuters?|couples?|families|children|men|women)\b/i;
+const PEOPLE_WORDS_REGEX = /\b(audience members?|attendees?|well-?wishers?|servers?|waiters?|waitress(?:es)?|patrons?|pedestrians?|passersby|bystanders?|crowd(?:ed|s)?|people|figures?|silhouettes?|strangers?|onlookers?|spectators?|visitors?|guests?|theatergoers?|theater people|professionals?|actors?|diners?|shoppers?|commuters?|couples?|families|children|men|women|students?'?s?|workers?'?s?|dancers?'?s?|musicians?'?s?|singers?'?s?|performers?'?s?)\b/i;
 
 const PEOPLE_WORD_REPLACEMENTS: [RegExp, string][] = [
   [/\bcrowded\b/gi, "densely furnished"],
@@ -93,6 +93,12 @@ const PEOPLE_WORD_REPLACEMENTS: [RegExp, string][] = [
   [/\bchildren\b/gi, ""],
   [/\bmen\b/gi, ""],
   [/\bwomen\b/gi, ""],
+  [/\bstudents?'?s?\b/gi, ""],
+  [/\bworkers?'?s?\b/gi, ""],
+  [/\bdancers?'?s?\b/gi, ""],
+  [/\bmusicians?'?s?\b/gi, ""],
+  [/\bsingers?'?s?\b/gi, ""],
+  [/\bperformers?'?s?\b/gi, ""],
   [/\bmilling\b/gi, "open"],
 ];
 
@@ -298,6 +304,85 @@ export function validatePipeline(pipeline: PipelineJSON): ValidationResult {
   for (let i = 0; i < fixed.characters.length; i++) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     delete (fixed.characters[i] as any).voice_url;
+  }
+
+  // ── Strip [INFERRED] tags from all prompt fields (auto-fix) ──
+  const hasInferred = (text: string) => /\[INFERRED\]/i.test(text);
+  const stripInferred = (text: string) => text.replace(/\s*\[INFERRED\]\s*/gi, " ").replace(/\s{2,}/g, " ").trim();
+  for (let ci = 0; ci < fixed.characters.length; ci++) {
+    if (hasInferred(fixed.characters[ci].image_generation_prompt)) {
+      fixed.characters[ci].image_generation_prompt = stripInferred(fixed.characters[ci].image_generation_prompt);
+      violations.push({
+        characterId: fixed.characters[ci].id,
+        field: "image_generation_prompt",
+        rule: "strip-inferred-tag",
+        message: `[INFERRED] tag found in "${fixed.characters[ci].name}" prompt — stripped. Tags are sent literally to the image model.`,
+        severity: "warning",
+        autoFixed: true,
+      });
+    }
+  }
+  for (let si = 0; si < (fixed.sets?.length || 0); si++) {
+    if (hasInferred(fixed.sets[si].set_image_prompt || "")) {
+      fixed.sets[si].set_image_prompt = stripInferred(fixed.sets[si].set_image_prompt || "");
+      violations.push({
+        field: "set_image_prompt",
+        rule: "strip-inferred-tag",
+        message: `[INFERRED] tag found in set "${fixed.sets[si].name}" — stripped.`,
+        severity: "warning",
+        autoFixed: true,
+      });
+    }
+  }
+  for (let si = 0; si < fixed.scenes.length; si++) {
+    if (hasInferred(fixed.scenes[si].scene_image_prompt)) {
+      fixed.scenes[si].scene_image_prompt = stripInferred(fixed.scenes[si].scene_image_prompt);
+      violations.push({
+        sceneId: fixed.scenes[si].id,
+        field: "scene_image_prompt",
+        rule: "strip-inferred-tag",
+        message: `[INFERRED] tag found — stripped. Tags are sent literally to the image model.`,
+        severity: "warning",
+        autoFixed: true,
+      });
+    }
+    if (hasInferred(fixed.scenes[si].animation_prompt)) {
+      fixed.scenes[si].animation_prompt = stripInferred(fixed.scenes[si].animation_prompt);
+      violations.push({
+        sceneId: fixed.scenes[si].id,
+        field: "animation_prompt",
+        rule: "strip-inferred-tag",
+        message: `[INFERRED] tag found — stripped.`,
+        severity: "warning",
+        autoFixed: true,
+      });
+    }
+  }
+
+  // ── Strip LLM-produced dialogue_group and background_group (validator assigns these) ──
+  for (let si = 0; si < fixed.scenes.length; si++) {
+    if (fixed.scenes[si].dialogue_group) {
+      violations.push({
+        sceneId: fixed.scenes[si].id,
+        field: "dialogue_group",
+        rule: "strip-llm-metadata",
+        message: `LLM-produced dialogue_group "${fixed.scenes[si].dialogue_group}" — stripped. The validator assigns dialogue groups automatically.`,
+        severity: "warning",
+        autoFixed: true,
+      });
+      delete fixed.scenes[si].dialogue_group;
+    }
+    if (fixed.scenes[si].background_group) {
+      violations.push({
+        sceneId: fixed.scenes[si].id,
+        field: "background_group",
+        rule: "strip-llm-metadata",
+        message: `LLM-produced background_group "${fixed.scenes[si].background_group}" — stripped. The validator assigns background groups automatically.`,
+        severity: "warning",
+        autoFixed: true,
+      });
+      delete fixed.scenes[si].background_group;
+    }
   }
 
   // ── Sets validation ──
@@ -536,9 +621,10 @@ export function validatePipeline(pipeline: PipelineJSON): ValidationResult {
       }
     }
 
-    // Rule: no character names in scene_image_prompt
+    // Rule: no character names (full or partial) in scene_image_prompt
     for (const char of fixed.characters) {
-      if (scene.scene_image_prompt.toLowerCase().includes(char.name.toLowerCase())) {
+      const promptLower = scene.scene_image_prompt.toLowerCase();
+      if (promptLower.includes(char.name.toLowerCase())) {
         violations.push({
           sceneId: sid,
           field: "scene_image_prompt",
@@ -547,6 +633,23 @@ export function validatePipeline(pipeline: PipelineJSON): ValidationResult {
           severity: "error",
           autoFixed: false,
         });
+      } else {
+        const parts = char.name.split(/\s+/);
+        for (const part of parts) {
+          if (part.length < 4) continue;
+          const partPattern = new RegExp(`\\b${part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+          if (partPattern.test(scene.scene_image_prompt)) {
+            violations.push({
+              sceneId: sid,
+              field: "scene_image_prompt",
+              rule: "no-people-in-background",
+              message: `Partial character name "${part}" (from "${char.name}") found in scene_image_prompt. Background prompts must not reference characters — they are composited separately.`,
+              severity: "error",
+              autoFixed: false,
+            });
+            break;
+          }
+        }
       }
     }
 
@@ -630,37 +733,50 @@ export function validatePipeline(pipeline: PipelineJSON): ValidationResult {
       }
     }
 
-    // Rule: narration scenes must have "No characters are speaking." (auto-fix)
+    // Rule: narration scenes must have "No characters are speaking." inside MOTION (auto-fix)
     if (isNarrationScene(scene)) {
       const prompt = scene.animation_prompt;
+      const motionSection = getMotionSection(prompt);
+      const prefixInMotion = motionSection ? motionSection.startsWith(NO_SPEAKING_PREFIX) : false;
 
-      if (!prompt.includes(NO_SPEAKING_PREFIX)) {
-        if (hasLabels(prompt)) {
-          fixed.scenes[i].animation_prompt = prompt.replace(
+      if (!prefixInMotion) {
+        let fixedPrompt = prompt;
+        // Strip any misplaced prefix (e.g. before POSITIONS)
+        fixedPrompt = fixedPrompt.replace(new RegExp(NO_SPEAKING_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*", "g"), "");
+        if (hasLabels(fixedPrompt)) {
+          fixedPrompt = fixedPrompt.replace(
             /MOTION:\s*/i,
             `MOTION: ${NO_SPEAKING_PREFIX} `
           );
         } else {
-          fixed.scenes[i].animation_prompt = `${NO_SPEAKING_PREFIX} ${prompt}`;
+          fixedPrompt = `${NO_SPEAKING_PREFIX} ${fixedPrompt}`;
         }
+        fixed.scenes[i].animation_prompt = fixedPrompt;
         violations.push({
           sceneId: sid,
           field: "animation_prompt",
           rule: "narration-prefix",
-          message: `Narration scene missing "${NO_SPEAKING_PREFIX}" — prepended automatically to prevent lip-sync.`,
+          message: `Narration scene: "${NO_SPEAKING_PREFIX}" was missing or misplaced (must be at start of MOTION section) — auto-fixed.`,
           severity: "warning",
           autoFixed: true,
         });
       }
 
       const promptAfterFix = fixed.scenes[i].animation_prompt;
-      const textToCheck = promptAfterFix.replace(NO_SPEAKING_PREFIX, "");
+      const motionAfterFix = getMotionSection(promptAfterFix) || promptAfterFix;
+      const textToCheck = motionAfterFix.replace(NO_SPEAKING_PREFIX, "");
       if (SPEECH_TRIGGER_REGEX.test(textToCheck)) {
         const match = textToCheck.match(SPEECH_TRIGGER_REGEX);
         const stripped = textToCheck.replace(
           new RegExp(`\\b(${SPEECH_TRIGGER_WORDS.join("|")})\\b`, "gi"), ""
         ).replace(/\s{2,}/g, " ").trim();
-        fixed.scenes[i].animation_prompt = NO_SPEAKING_PREFIX + stripped;
+        if (hasLabels(promptAfterFix)) {
+          const camera = promptAfterFix.match(/CAMERA:\s*([\s\S]*?)$/i)?.[1]?.trim() || "";
+          const positions = getPositionsSection(promptAfterFix) || "";
+          fixed.scenes[i].animation_prompt = `POSITIONS: ${positions}\nMOTION: ${NO_SPEAKING_PREFIX} ${stripped}\nCAMERA: ${camera}`;
+        } else {
+          fixed.scenes[i].animation_prompt = `${NO_SPEAKING_PREFIX} ${stripped}`;
+        }
         violations.push({
           sceneId: sid,
           field: "animation_prompt",
