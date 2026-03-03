@@ -1,51 +1,62 @@
 import { NextRequest, NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
-import OpenAI from "openai";
 import { PIPELINE_SYSTEM_PROMPT, buildUserPrompt } from "@/lib/prompt";
 
 export const runtime = "edge";
-
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
-
-function getOpenAIClient() {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error("OPENAI_API_KEY is not configured");
-  return new OpenAI({ apiKey });
-}
-
-function isContentFilterError(err: unknown): boolean {
-  if (err instanceof Anthropic.APIError) {
-    return err.status === 400 && /content filtering/i.test(err.message);
-  }
-  if (err instanceof Error) {
-    return /content.?filter|blocked by/i.test(err.message);
-  }
-  return false;
-}
 
 async function streamClaude(
   storyText: string,
   controller: ReadableStreamDefaultController,
   encoder: TextEncoder
 ): Promise<boolean> {
-  const anthropicStream = await anthropic.messages.stream({
-    model: "claude-sonnet-4-20250514",
-    max_tokens: 64000,
-    system: PIPELINE_SYSTEM_PROMPT,
-    messages: [
-      { role: "user", content: buildUserPrompt(storyText) },
-    ],
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key": process.env.ANTHROPIC_API_KEY!,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 64000,
+      stream: true,
+      system: PIPELINE_SYSTEM_PROMPT,
+      messages: [{ role: "user", content: buildUserPrompt(storyText) }],
+    }),
   });
 
-  for await (const chunk of anthropicStream) {
-    if (
-      chunk.type === "content_block_delta" &&
-      chunk.delta.type === "text_delta"
-    ) {
-      const data = JSON.stringify({ text: chunk.delta.text });
-      controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+  if (!res.ok) {
+    const body = await res.text();
+    const isFilter = res.status === 400 && /content.?filter/i.test(body);
+    if (isFilter) throw Object.assign(new Error(body), { contentFilter: true });
+    throw new Error(`Anthropic ${res.status}: ${body}`);
+  }
+
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+
+    const lines = buf.split("\n");
+    buf = lines.pop()!;
+
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      const payload = line.slice(6);
+      if (payload === "[DONE]") continue;
+      try {
+        const evt = JSON.parse(payload);
+        if (evt.type === "content_block_delta" && evt.delta?.text) {
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ text: evt.delta.text })}\n\n`)
+          );
+        }
+      } catch {
+        // skip malformed SSE lines
+      }
     }
   }
 
@@ -57,26 +68,67 @@ async function streamOpenAI(
   controller: ReadableStreamDefaultController,
   encoder: TextEncoder
 ): Promise<boolean> {
-  const client = getOpenAIClient();
-  const openaiStream = await client.chat.completions.create({
-    model: "gpt-4o",
-    max_tokens: 16384,
-    stream: true,
-    messages: [
-      { role: "system", content: PIPELINE_SYSTEM_PROMPT },
-      { role: "user", content: buildUserPrompt(storyText) },
-    ],
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY!}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "gpt-4o",
+      max_tokens: 16384,
+      stream: true,
+      messages: [
+        { role: "system", content: PIPELINE_SYSTEM_PROMPT },
+        { role: "user", content: buildUserPrompt(storyText) },
+      ],
+    }),
   });
 
-  for await (const chunk of openaiStream) {
-    const text = chunk.choices[0]?.delta?.content;
-    if (text) {
-      const data = JSON.stringify({ text });
-      controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`OpenAI ${res.status}: ${body}`);
+  }
+
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+
+    const lines = buf.split("\n");
+    buf = lines.pop()!;
+
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      const payload = line.slice(6);
+      if (payload === "[DONE]") continue;
+      try {
+        const evt = JSON.parse(payload);
+        const text = evt.choices?.[0]?.delta?.content;
+        if (text) {
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ text })}\n\n`)
+          );
+        }
+      } catch {
+        // skip malformed SSE lines
+      }
     }
   }
 
   return true;
+}
+
+function isContentFilterError(err: unknown): boolean {
+  if (err && typeof err === "object" && "contentFilter" in err) return true;
+  if (err instanceof Error) {
+    return /content.?filter|blocked by/i.test(err.message);
+  }
+  return false;
 }
 
 export async function POST(req: NextRequest) {
