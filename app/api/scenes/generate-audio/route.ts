@@ -3,7 +3,7 @@ import { getSupabase } from "@/lib/supabase";
 import { falSubscribeWithRetry } from "@/lib/fal-retry";
 import { TTS_MODEL, NARRATOR_VOICE_ID } from "@/lib/fal-models";
 
-export const maxDuration = 900;
+export const maxDuration = 800;
 
 export async function POST(req: NextRequest) {
   try {

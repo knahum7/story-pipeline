@@ -3,7 +3,7 @@ import { getSupabase } from "@/lib/supabase";
 import { IMAGE_EDIT_MODEL } from "@/lib/fal-models";
 import { falSubscribeWithRetry } from "@/lib/fal-retry";
 
-export const maxDuration = 900;
+export const maxDuration = 800;
 
 interface FalImage {
   url: string;

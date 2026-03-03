@@ -3,7 +3,7 @@ import { getSupabase } from "@/lib/supabase";
 import { falSubscribeWithRetry } from "@/lib/fal-retry";
 import { VIDEO_AUDIO_MODEL, VIDEO_IMAGE_MODEL } from "@/lib/fal-models";
 
-export const maxDuration = 900;
+export const maxDuration = 800;
 
 // Visual quality negatives shared by all scene types
 const BASE_NEGATIVE = [

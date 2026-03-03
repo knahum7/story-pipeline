@@ -4,7 +4,7 @@ import { falSubscribeWithRetry } from "@/lib/fal-retry";
 import { IMAGE_EDIT_MODEL } from "@/lib/fal-models";
 import { StorySet } from "@/types/pipeline";
 
-export const maxDuration = 900;
+export const maxDuration = 800;
 
 interface FalImage {
   url: string;

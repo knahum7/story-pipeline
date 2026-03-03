@@ -4,7 +4,7 @@ import { PIPELINE_SYSTEM_PROMPT, buildUserPrompt } from "@/lib/prompt";
 declare const EdgeRuntime: string | undefined;
 
 export const runtime = "edge";
-export const maxDuration = 900;
+export const maxDuration = 800;
 
 async function streamClaude(
   storyText: string,
@@ -163,10 +163,8 @@ export async function POST(req: NextRequest) {
     const wordCount = storyText.trim().split(/\s+/).length;
 
     const runtimeEnv = typeof EdgeRuntime !== "undefined" ? "edge" : "node";
-    const hasBuffer = typeof Buffer !== "undefined";
-    const hasProcess = typeof process !== "undefined" && !!process.versions?.node;
     console.log(
-      `[parse-story] runtime=${runtimeEnv} hasBuffer=${hasBuffer} hasNodeProcess=${hasProcess} | Starting pipeline — ${wordCount} words, ${storyLength} chars`
+      `[parse-story] runtime=${runtimeEnv} | Starting pipeline — ${wordCount} words, ${storyLength} chars`
     );
 
     const encoder = new TextEncoder();
