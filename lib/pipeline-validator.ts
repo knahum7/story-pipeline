@@ -47,13 +47,19 @@ const SPEECH_TRIGGER_REGEX = new RegExp(
 );
 
 const MINOR_AGE_PATTERN = /\b(1[0-7]|[1-9])\s*(?:years?\s*old|year-old|yo\b)|teenager|teen\b/i;
-const SUGGESTIVE_MINOR_PATTERNS = [
-  /\b(?:tight[- ]?fitting|slinky|revealing|low[- ]?cut|skimpy|provocative|seductive)\b/i,
-  /\bintoxicat(?:ed|ion)\b/i,
-  /\bdrunk\b/i,
+const SUGGESTIVE_MINOR_PATTERNS: [RegExp, string][] = [
+  [/\btight[- ]?fitting\b/i, "simple"],
+  [/\bslinky\b/i, "modest"],
+  [/\brevealing\b/i, "simple"],
+  [/\blow[- ]?cut\b/i, "modest"],
+  [/\bskimpy\b/i, "simple"],
+  [/\bprovocative\b/i, "understated"],
+  [/\bseductive\b/i, "composed"],
+  [/\bintoxicat(?:ed|ion)\b/i, ""],
+  [/\bdrunk\b/i, ""],
 ];
 
-const PEOPLE_WORDS_REGEX = /\b(audience members?|attendees?|well-?wishers?|servers?|waiters?|waitress(?:es)?|patrons?|pedestrians?|passersby|bystanders?|crowd(?:ed|s)?|people|figures?|silhouettes?|strangers?|onlookers?|spectators?|visitors?|guests?|theatergoers?|theater people)\b/i;
+const PEOPLE_WORDS_REGEX = /\b(audience members?|attendees?|well-?wishers?|servers?|waiters?|waitress(?:es)?|patrons?|pedestrians?|passersby|bystanders?|crowd(?:ed|s)?|people|figures?|silhouettes?|strangers?|onlookers?|spectators?|visitors?|guests?|theatergoers?|theater people|professionals?|actors?|diners?|shoppers?|commuters?|couples?|families|children|men|women)\b/i;
 
 const LOCATION_HINT_WORDS = [
   "taxi", "cab",
@@ -87,11 +93,15 @@ const NON_VISUAL_PATTERNS = [
   /\bsound(?:s|ing)?\s+of\b/i, /\bhears?\b/i,
 ];
 
+const STYLE_PEOPLE_WORDS = /\b(person|people|man|woman|boy|girl|figure|face|portrait|character|silhouette|crowd)\b/i;
+
 const NO_SPEAKING_PREFIX = "No characters are speaking.";
 const VERTICAL_FRAMING = "vertical 9:16 framing";
 
 const DIALOGUE_WORD_LIMIT = 35;
 const NARRATION_WORD_LIMIT = 40;
+const STYLE_PROMPT_MIN_WORDS = 20;
+const STYLE_PROMPT_MAX_WORDS = 70;
 const MAX_CHARACTERS_PER_SCENE = 3;
 
 function wordCount(text: string): number {
@@ -106,15 +116,87 @@ function hasLabels(prompt: string): boolean {
   return /POSITIONS:/i.test(prompt) && /MOTION:/i.test(prompt) && /CAMERA:/i.test(prompt);
 }
 
+function getPositionsSection(prompt: string): string | null {
+  const match = prompt.match(/POSITIONS:\s*([\s\S]*?)(?=MOTION:|$)/i);
+  return match ? match[1].trim() : null;
+}
+
 function getMotionSection(prompt: string): string | null {
   const match = prompt.match(/MOTION:\s*([\s\S]*?)(?=CAMERA:|$)/i);
   return match ? match[1].trim() : null;
+}
+
+function normalizePrompt(prompt: string): string {
+  return prompt.toLowerCase().replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim();
+}
+
+function promptSimilarity(a: string, b: string): number {
+  const wordsA = new Set(normalizePrompt(a).split(" "));
+  const wordsB = new Set(normalizePrompt(b).split(" "));
+  const intersection = new Set([...wordsA].filter((w) => wordsB.has(w)));
+  const union = new Set([...wordsA, ...wordsB]);
+  if (union.size === 0) return 1;
+  return intersection.size / union.size;
 }
 
 export function validatePipeline(pipeline: PipelineJSON): ValidationResult {
   const violations: Violation[] = [];
   const fixed = JSON.parse(JSON.stringify(pipeline)) as PipelineJSON;
   const characterIds = new Set(fixed.characters.map((c) => c.id));
+  const charMap = new Map(fixed.characters.map((c) => [c.id, c.name]));
+
+  // ── Style prompt validation ──
+  if (fixed.style_prompt) {
+    const styleWc = wordCount(fixed.style_prompt);
+    if (styleWc < STYLE_PROMPT_MIN_WORDS) {
+      violations.push({
+        field: "style_prompt",
+        rule: "style-too-short",
+        message: `Style prompt is ${styleWc} words (minimum: ${STYLE_PROMPT_MIN_WORDS}). Too short to generate a usable style reference image.`,
+        severity: "warning",
+        autoFixed: false,
+      });
+    }
+    if (styleWc > STYLE_PROMPT_MAX_WORDS) {
+      violations.push({
+        field: "style_prompt",
+        rule: "style-too-long",
+        message: `Style prompt is ${styleWc} words (maximum: ${STYLE_PROMPT_MAX_WORDS}). Overly long style prompts dilute the reference image.`,
+        severity: "warning",
+        autoFixed: false,
+      });
+    }
+    if (STYLE_PEOPLE_WORDS.test(fixed.style_prompt)) {
+      const match = fixed.style_prompt.match(STYLE_PEOPLE_WORDS);
+      violations.push({
+        field: "style_prompt",
+        rule: "style-no-people",
+        message: `Style prompt contains "${match?.[0]}". The style image must be an abstract texture/palette swatch with no people or recognizable subjects.`,
+        severity: "error",
+        autoFixed: false,
+      });
+    }
+    for (const hint of LOCATION_HINT_WORDS) {
+      if (new RegExp(`\\b${hint}\\b`, "i").test(fixed.style_prompt)) {
+        violations.push({
+          field: "style_prompt",
+          rule: "style-no-scene",
+          message: `Style prompt contains location word "${hint}". The style image must be an abstract texture, not a recognizable scene.`,
+          severity: "warning",
+          autoFixed: false,
+        });
+        break;
+      }
+    }
+  } else {
+    violations.push({
+      field: "style_prompt",
+      rule: "missing-style-prompt",
+      message: "No style_prompt provided. A style reference image is required for visual consistency.",
+      severity: "error",
+      autoFixed: false,
+    });
+  }
 
   // ── Character checks ──
   for (const char of fixed.characters) {
@@ -133,30 +215,43 @@ export function validatePipeline(pipeline: PipelineJSON): ValidationResult {
     }
   }
 
-  // ── Content safety for minors ──
-  for (const char of fixed.characters) {
+  // ── Content safety for minors (with auto-fix) ──
+  for (let ci = 0; ci < fixed.characters.length; ci++) {
+    const char = fixed.characters[ci];
     if (MINOR_AGE_PATTERN.test(char.image_generation_prompt)) {
-      for (const pattern of SUGGESTIVE_MINOR_PATTERNS) {
+      for (const [pattern, replacement] of SUGGESTIVE_MINOR_PATTERNS) {
         const match = char.image_generation_prompt.match(pattern);
         if (match) {
-          violations.push({
-            characterId: char.id,
-            field: "image_generation_prompt",
-            rule: "minor-content-safety",
-            message: `Minor character "${char.name}" has suggestive detail "${match[0]}". Image models will REJECT this prompt. Remove suggestive descriptions for characters under 18.`,
-            severity: "error",
-            autoFixed: false,
-          });
+          const original = match[0];
+          if (replacement) {
+            fixed.characters[ci].image_generation_prompt =
+              fixed.characters[ci].image_generation_prompt.replace(pattern, replacement);
+            violations.push({
+              characterId: char.id,
+              field: "image_generation_prompt",
+              rule: "minor-content-safety",
+              message: `Minor character "${char.name}" had suggestive detail "${original}" — replaced with "${replacement}". Image models reject suggestive prompts for minors.`,
+              severity: "error",
+              autoFixed: true,
+            });
+          } else {
+            fixed.characters[ci].image_generation_prompt =
+              fixed.characters[ci].image_generation_prompt.replace(pattern, "").replace(/\s{2,}/g, " ").trim();
+            violations.push({
+              characterId: char.id,
+              field: "image_generation_prompt",
+              rule: "minor-content-safety",
+              message: `Minor character "${char.name}" had suggestive detail "${original}" — removed. Image models reject suggestive prompts for minors.`,
+              severity: "error",
+              autoFixed: true,
+            });
+          }
         }
       }
     }
   }
 
   // ── Voice assignment ──
-  // ALWAYS override voice_url with gender-appropriate voices.
-  // The LLM may fill in voice_url despite being told not to, and often
-  // assigns wrong-gender voices. We re-assign every character to guarantee
-  // correct gender mapping and unique voices per gender group.
   const genderCounters: Record<string, number> = { female: 0, male: 0, unknown: 0 };
 
   for (let i = 0; i < fixed.characters.length; i++) {
@@ -251,7 +346,7 @@ export function validatePipeline(pipeline: PipelineJSON): ValidationResult {
       });
     }
 
-    // Rule: scene location should match assigned set
+    // Rule: scene location should match assigned set (ERROR severity)
     if (scene.set_id && setMap.has(scene.set_id)) {
       const assignedSet = setMap.get(scene.set_id)!;
       const setContext = `${assignedSet.name} ${assignedSet.set_image_prompt || ""}`.toLowerCase();
@@ -265,8 +360,8 @@ export function validatePipeline(pipeline: PipelineJSON): ValidationResult {
               sceneId: sid,
               field: "set_id",
               rule: "set-location-mismatch",
-              message: `Scene mentions "${hint}" (in title/narration) but assigned set "${assignedSet.name}" doesn't reference this location. Consider creating a dedicated set or reassigning.`,
-              severity: "warning",
+              message: `Scene mentions "${hint}" (in title/narration) but assigned set "${assignedSet.name}" doesn't reference this location. The set image will be used as the scene background — mismatched sets produce visually wrong results. Create a dedicated set or reassign.`,
+              severity: "error",
               autoFixed: false,
             });
             break;
@@ -317,6 +412,22 @@ export function validatePipeline(pipeline: PipelineJSON): ValidationResult {
       }
       if (speakers.size > 1) {
         multiSpeakerIndices.push(i);
+      }
+    }
+
+    // Rule: dialogue speakers must be in scene's characters array
+    if (scene.dialogue) {
+      for (const line of scene.dialogue) {
+        if (characterIds.has(line.character) && !scene.characters.includes(line.character)) {
+          violations.push({
+            sceneId: sid,
+            field: "dialogue",
+            rule: "speaker-not-in-scene",
+            message: `Speaker "${charMap.get(line.character) || line.character}" has dialogue but is not in this scene's characters array — they won't appear in the composited frame.`,
+            severity: "error",
+            autoFixed: false,
+          });
+        }
       }
     }
 
@@ -437,19 +548,68 @@ export function validatePipeline(pipeline: PipelineJSON): ValidationResult {
       });
     }
 
+    // Rule: full name enforcement in animation_prompt
+    if (hasLabels(scene.animation_prompt)) {
+      for (const char of fixed.characters) {
+        const nameParts = char.name.split(/\s+/);
+        if (nameParts.length <= 1) continue;
+        const fullNameLower = char.name.toLowerCase();
+        const promptLower = scene.animation_prompt.toLowerCase();
+        if (promptLower.includes(fullNameLower)) continue;
+
+        for (const part of nameParts) {
+          if (part.length < 3) continue;
+          const shortNamePattern = new RegExp(`\\b${part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+          if (shortNamePattern.test(scene.animation_prompt)) {
+            violations.push({
+              sceneId: sid,
+              field: "animation_prompt",
+              rule: "full-name-required",
+              message: `Short name "${part}" used instead of full name "${char.name}". The compositor and video model need full names to match character references.`,
+              severity: "warning",
+              autoFixed: false,
+            });
+            break;
+          }
+        }
+      }
+    }
+
+    // Rule: all characters in scene.characters must appear in POSITIONS
+    if (hasLabels(scene.animation_prompt) && scene.characters.length > 0) {
+      const positions = getPositionsSection(scene.animation_prompt) || "";
+      const positionsLower = positions.toLowerCase();
+      for (const charId of scene.characters) {
+        const name = charMap.get(charId);
+        if (!name) continue;
+        const nameLower = name.toLowerCase();
+        const nameParts = name.toLowerCase().split(/\s+/);
+        const foundInPositions = positionsLower.includes(nameLower) ||
+          nameParts.some((part) => part.length >= 3 && positionsLower.includes(part));
+        if (!foundInPositions) {
+          violations.push({
+            sceneId: sid,
+            field: "animation_prompt",
+            rule: "missing-position",
+            message: `Character "${name}" is listed in the scene but has no POSITIONS entry — the compositor won't know where to place them.`,
+            severity: "warning",
+            autoFixed: false,
+          });
+        }
+      }
+    }
+
     // Rule: narration scenes must have "No characters are speaking." (auto-fix)
     if (isNarrationScene(scene)) {
       const prompt = scene.animation_prompt;
 
       if (!prompt.includes(NO_SPEAKING_PREFIX)) {
         if (hasLabels(prompt)) {
-          // Insert after MOTION: label
           fixed.scenes[i].animation_prompt = prompt.replace(
             /MOTION:\s*/i,
             `MOTION: ${NO_SPEAKING_PREFIX} `
           );
         } else {
-          // No labels — prepend to the whole prompt
           fixed.scenes[i].animation_prompt = `${NO_SPEAKING_PREFIX} ${prompt}`;
         }
         violations.push({
@@ -462,7 +622,6 @@ export function validatePipeline(pipeline: PipelineJSON): ValidationResult {
         });
       }
 
-      // After fix, re-check for speech-trigger words (skip the prefix itself)
       const promptAfterFix = fixed.scenes[i].animation_prompt;
       const textToCheck = promptAfterFix.replace(NO_SPEAKING_PREFIX, "");
       if (SPEECH_TRIGGER_REGEX.test(textToCheck)) {
@@ -477,6 +636,47 @@ export function validatePipeline(pipeline: PipelineJSON): ValidationResult {
         });
       }
     }
+  }
+
+  // ── Scene continuity check + auto-fix ──
+  // Consecutive scenes at the same set_id with similar-but-not-identical
+  // scene_image_prompts indicate a continuity break. The first prompt in
+  // a consecutive group is used as the canonical version.
+  let runStart = 0;
+  while (runStart < fixed.scenes.length) {
+    const runSetId = fixed.scenes[runStart].set_id;
+    if (!runSetId) {
+      runStart++;
+      continue;
+    }
+
+    let runEnd = runStart + 1;
+    while (runEnd < fixed.scenes.length && fixed.scenes[runEnd].set_id === runSetId) {
+      runEnd++;
+    }
+
+    if (runEnd - runStart >= 2) {
+      const canonicalPrompt = fixed.scenes[runStart].scene_image_prompt;
+      for (let j = runStart + 1; j < runEnd; j++) {
+        const currentPrompt = fixed.scenes[j].scene_image_prompt;
+        if (currentPrompt === canonicalPrompt) continue;
+
+        const similarity = promptSimilarity(canonicalPrompt, currentPrompt);
+        if (similarity >= 0.65) {
+          violations.push({
+            sceneId: fixed.scenes[j].id,
+            field: "scene_image_prompt",
+            rule: "scene-continuity",
+            message: `Similar but not identical to ${fixed.scenes[runStart].id} (${Math.round(similarity * 100)}% overlap). Consecutive scenes at the same location should use identical prompts — auto-fixed to match ${fixed.scenes[runStart].id}.`,
+            severity: "warning",
+            autoFixed: true,
+          });
+          fixed.scenes[j].scene_image_prompt = canonicalPrompt;
+        }
+      }
+    }
+
+    runStart = runEnd;
   }
 
   // ── Auto-split multi-speaker scenes (iterate in reverse to preserve indices) ──
@@ -496,11 +696,19 @@ export function validatePipeline(pipeline: PipelineJSON): ValidationResult {
 
     if (turns.length <= 1) continue;
 
-    const charMap = new Map(fixed.characters.map((c) => [c.id, c.name]));
+    const origPositions = getPositionsSection(scene.animation_prompt) || "";
+    const origCamera = scene.animation_prompt.match(/CAMERA:\s*([\s\S]*?)$/i)?.[1]?.trim() || "Static medium shot with subtle handheld drift.";
 
     const splitScenes: Scene[] = turns.map((turn, turnIdx) => {
       const charName = charMap.get(turn.character) || turn.character;
       const suffix = String.fromCharCode(97 + turnIdx);
+
+      const hasOrigPositionForChar = origPositions.toLowerCase().includes(charName.toLowerCase()) ||
+        charName.toLowerCase().split(/\s+/).some((p) => p.length >= 3 && origPositions.toLowerCase().includes(p));
+
+      const positionLine = hasOrigPositionForChar
+        ? origPositions
+        : `${charName} stands in center-frame.`;
 
       return {
         id: `${scene.id}${suffix}`,
@@ -508,7 +716,7 @@ export function validatePipeline(pipeline: PipelineJSON): ValidationResult {
         set_id: scene.set_id,
         characters: [turn.character],
         scene_image_prompt: scene.scene_image_prompt,
-        animation_prompt: `POSITIONS: ${charName} stands in center-frame.\nMOTION: ${charName} reacts and delivers the line with natural expression, lips moving as the character speaks.\nCAMERA: Static medium shot with subtle handheld drift.`,
+        animation_prompt: `POSITIONS: ${positionLine}\nMOTION: ${charName} reacts and delivers the line with natural expression, lips moving as the character speaks.\nCAMERA: ${origCamera}`,
         dialogue: turn.lines,
         narration: "",
       };

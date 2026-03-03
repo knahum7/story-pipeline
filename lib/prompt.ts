@@ -57,7 +57,7 @@ Each character object:
 - id: unique identifier (char_01, char_02, etc.)
 - name: full name
 - role: story role (e.g. "Protagonist", "Antagonist", "Supporting")
-- voice_url: MUST be "" (empty string). Voices are assigned programmatically by the pipeline based on inferred gender. NEVER fill this in — any value you write will be overridden.
+- voice_url: always "" (empty string). The pipeline assigns voices automatically from the image_generation_prompt — any value you write here is discarded and overridden.
 - character_reference_url: always "" (filled later)
 - image_generation_prompt: detailed prompt for generating a PORTRAIT of this character.
 
@@ -93,7 +93,7 @@ FORMAT for set_image_prompt: "[location type], [architectural details: walls, ce
 
 RULES:
 - Write a WIDE, COMPREHENSIVE establishing shot — this is the "master reference" for the location. Include enough architectural and decorative detail that variations (different camera angles) will still look like the same place.
-- NO characters, people, figures, silhouettes, crowds, servers, waiters, passersby, or any human presence — sets are EMPTY locations with ZERO people. If the story mentions a "busy restaurant", describe the furniture, decor, and lighting but NOT the people. The compositing pipeline adds characters later.
+- NO human presence of any kind — sets are EMPTY locations with ZERO people. The compositing pipeline adds characters later. This includes ALL of the following banned words: crowded, crowd, crowds, people, patrons, servers, waiters, waitress, waitresses, guests, visitors, audience members, attendees, well-wishers, bystanders, onlookers, spectators, passersby, figures, silhouettes, strangers, theatergoers, theater people, professionals, actors, diners, pedestrians, couples, families, children, men, women. If the story mentions a "busy restaurant", describe the furniture, decor, and lighting — write "densely furnished" instead of "crowded".
 - NO sounds, smells, or non-visual details — "city sounds", "samba music", "laughter" cannot be rendered. Describe ONLY what a camera sees.
 - NO style or quality descriptors — those come from the style reference image.
 - Be SPECIFIC about distinguishing features: wall materials, floor type, lighting fixtures, furniture style, color scheme. These details anchor visual consistency across scenes.
@@ -142,7 +142,7 @@ RULES:
 - Repeat KEY ARCHITECTURAL DETAILS from the set_image_prompt (floor material, wall color, lighting type) to reinforce location identity. The model uses the set image as visual reference but the prompt still guides composition.
 - !! BANNED IN scene_image_prompt:
   (a) Reference words: "Same", "same as", "similar to", "previous", "as before", "again", "see scene_XX". Each prompt is sent to a COMPLETELY SEPARATE API call with zero memory. ALWAYS write the FULL, self-contained description. COPY-PASTE details from the set_image_prompt when needed.
-  (b) Character names or people: NEVER write "Ivan visible in distance", "with audience members", "well-wishers surrounding", "servers carrying trays", or ANY human presence. This field generates the EMPTY BACKGROUND. Characters are composited in separately. If you put people in the background prompt, they will appear as uncontrollable ghost figures that conflict with the composited characters.
+  (b) Character names or people: This field generates the EMPTY BACKGROUND. Characters are composited in separately. If you put people in the background prompt, they will appear as uncontrollable ghost figures that conflict with the composited characters. BANNED PEOPLE WORDS — do NOT use ANY of these in scene_image_prompt or set_image_prompt: crowded, crowd, crowds, people, patrons, servers, waiters, waitress, waitresses, guests, visitors, audience members, attendees, well-wishers, bystanders, onlookers, spectators, passersby, figures, silhouettes, strangers, theatergoers, theater people, professionals, actors, diners, shoppers, commuters, pedestrians, couples, families, children, men, women. If the story says "crowded restaurant", write "densely furnished restaurant" — describe the FURNITURE density, not the human presence.
 
 EXAMPLE (for a scene in set "Auditorium"): "Front row seating area of large gallery with gleaming honey-toned hardwood floors, reserved sign reading Borysenko Family and Friends on center chair, folding chairs arranged in horseshoe pattern visible in background, stage area with microphones visible at far end, warm overhead track lighting, evening atmosphere, vertical 9:16 framing"
 
@@ -180,7 +180,7 @@ CAMERA: Static with subtle handheld drift."
 
 EXAMPLE (narration with characters):
 "POSITIONS: Darlyn stands on the wooden ladder in center-frame, arms reaching above the kitchen cabinets. 
-MOTION: No characters are spending. Darlyn's hands sweep slowly across the top of the cabinet, pulling down small flat bottles and placing them into a grocery bag. Her body sways slightly on the ladder.
+MOTION: No characters are speaking. Darlyn's hands sweep slowly across the top of the cabinet, pulling down small flat bottles and placing them into a grocery bag. Her body sways slightly on the ladder.
 CAMERA: Static, slight handheld drift."
 
 EXAMPLE (narration, no characters):
@@ -231,6 +231,12 @@ CRITICAL SCENE RULES (ZERO TOLERANCE)
 
 10. SCENE CONTINUITY — when splitting a conversation or long passage into multiple scenes at the same location AND same camera angle, use the SAME set_id and COPY-PASTE the scene_image_prompt IDENTICALLY, character-for-character. Each prompt goes to a separate API call with no memory — even tiny wording changes produce a visually different background. If the camera angle genuinely changes within the same set (e.g. switching from a front-row view to a stage view), then a different scene_image_prompt is appropriate. But for alternating dialogue turns at the same spot, the background MUST be identical. NEVER write "Same...", "Similar...", "As before...".
 
+EXAMPLE — correct 3-scene dialogue split at the same camera angle (notice IDENTICAL scene_image_prompt):
+scene_12: { set_id: "set_02", scene_image_prompt: "Corner booth area of dimly lit jazz bar with red leather seating, brass table lamps casting warm pools of light, exposed brick wall with framed photos, polished dark wood floor, vertical 9:16 framing", dialogue: [{ character: "char_01", line: "I haven't seen you in years." }] }
+scene_13: { set_id: "set_02", scene_image_prompt: "Corner booth area of dimly lit jazz bar with red leather seating, brass table lamps casting warm pools of light, exposed brick wall with framed photos, polished dark wood floor, vertical 9:16 framing", dialogue: [{ character: "char_02", line: "And whose fault is that?" }] }
+scene_14: { set_id: "set_02", scene_image_prompt: "Corner booth area of dimly lit jazz bar with red leather seating, brass table lamps casting warm pools of light, exposed brick wall with framed photos, polished dark wood floor, vertical 9:16 framing", dialogue: [{ character: "char_01", line: "Mine. I know." }] }
+↑ All three prompts are CHARACTER-FOR-CHARACTER identical. Do NOT rephrase, reword, or add variety. Literally copy-paste.
+
 11. NO DURATION FIELD — scenes do not have a fixed duration. Video length is determined automatically: dialogue and narration scenes match their TTS audio length, silent scenes default to ~5 seconds.
 
 12. CORRECT DIALOGUE ATTRIBUTION — if a line is spoken by Norm, it belongs to Norm's character ID, not the character Norm is speaking TO. If a line is spoken by a character not in the characters array, ADD them to the characters array first. NEVER mis-attribute dialogue to make it fit.
@@ -238,5 +244,28 @@ CRITICAL SCENE RULES (ZERO TOLERANCE)
 13. VISUAL-ONLY PROMPTS — image_generation_prompt, set_image_prompt, and scene_image_prompt must describe ONLY what a camera can capture. No smells ("chlorine scent"), sounds ("birds chirping"), internal thoughts ("feeling anxious"), or non-visual sensory details. The image model has no way to render these and they waste prompt space.`;
 
 export const buildUserPrompt = (storyText: string): string => {
-  return `Parse the following story into the animation pipeline JSON format as instructed:\n\n${storyText}`;
+  const wordCount = storyText.trim().split(/\s+/).length;
+  const estimatedPages = Math.ceil(wordCount / 250);
+  const estimatedScenes = `${estimatedPages * 4}-${estimatedPages * 6}`;
+
+  return `Parse the following story into the animation pipeline JSON format as instructed.
+
+STORY STATS: ~${wordCount} words, ~${estimatedPages} pages. Target approximately ${estimatedScenes} scenes.
+
+BEFORE PRODUCING JSON, mentally plan:
+1. List every unique PHYSICAL LOCATION in the story — each one needs a set. Include transitional locations (taxis, streets, hallways) and flashback locations.
+2. List every CHARACTER who speaks or physically appears — each one needs a character entry.
+3. Walk through the story beat by beat and note where scene boundaries fall. Every dialogue turn change = new scene. Every location change = new scene. Every significant narrative beat = new scene.
+
+AFTER PRODUCING JSON, mentally verify:
+- Does every location mentioned in any scene have a matching set in the sets array?
+- Does every dialogue line have a character entry in the characters array?
+- Are consecutive scenes at the same camera angle using IDENTICAL (copy-pasted) scene_image_prompts?
+- Does every narration scene's MOTION section begin with "No characters are speaking."?
+- Are all scene_image_prompt and set_image_prompt fields free of people words (crowded, patrons, guests, etc.)?
+
+STORY TEXT:
+
+${storyText}`;
 };
+
