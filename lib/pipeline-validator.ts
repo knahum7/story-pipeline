@@ -55,6 +55,30 @@ const SUGGESTIVE_MINOR_PATTERNS = [
 
 const PEOPLE_WORDS_REGEX = /\b(audience members?|attendees?|well-?wishers?|servers?|waiters?|waitress(?:es)?|patrons?|pedestrians?|passersby|bystanders?|crowd(?:ed|s)?|people|figures?|silhouettes?|strangers?|onlookers?|spectators?|visitors?|guests?|theatergoers?|theater people)\b/i;
 
+const LOCATION_HINT_WORDS = [
+  "taxi", "cab",
+  "apartment", "bedroom", "hotel", "motel",
+  "hospital", "clinic",
+  "college", "university", "classroom", "school", "dorm", "dormitory",
+  "street", "sidewalk", "highway", "parkway",
+  "office", "courthouse", "prison", "jail",
+  "basement", "attic", "garage", "warehouse",
+  "balcony", "rooftop",
+  "alley", "alleyway",
+  "beach", "pier", "dock", "harbor",
+  "bridge", "tunnel", "subway", "airport",
+  "cemetery", "graveyard",
+  "kitchen", "bathroom", "porch",
+  "barn", "cabin", "cottage",
+  "library", "museum", "gym", "stadium",
+  "market", "supermarket",
+  "camp", "tent",
+];
+
+const LOCATION_HINT_REGEX = new RegExp(
+  `\\b(${LOCATION_HINT_WORDS.join("|")})\\b`, "gi"
+);
+
 const NON_VISUAL_PATTERNS = [
   /\bscent\b/i, /\bsmell(?:s|ing)?\b/i, /\baroma\b/i, /\bodor\b/i,
   /\bstench\b/i, /\bfragran(?:ce|t)\b/i,
@@ -159,6 +183,7 @@ export function validatePipeline(pipeline: PipelineJSON): ValidationResult {
     fixed.sets = [];
   }
   const setIds = new Set(fixed.sets.map((s: StorySet) => s.id));
+  const setMap = new Map(fixed.sets.map((s: StorySet) => [s.id, s]));
 
   for (const set of fixed.sets) {
     if (!set.set_image_prompt || !set.set_image_prompt.trim()) {
@@ -224,6 +249,30 @@ export function validatePipeline(pipeline: PipelineJSON): ValidationResult {
         severity: "error",
         autoFixed: false,
       });
+    }
+
+    // Rule: scene location should match assigned set
+    if (scene.set_id && setMap.has(scene.set_id)) {
+      const assignedSet = setMap.get(scene.set_id)!;
+      const setContext = `${assignedSet.name} ${assignedSet.set_image_prompt || ""}`.toLowerCase();
+      const sceneText = `${scene.title} ${scene.narration || ""}`;
+      const locationMatches = sceneText.match(LOCATION_HINT_REGEX);
+      if (locationMatches) {
+        const uniqueHints = [...new Set(locationMatches.map((m) => m.toLowerCase()))];
+        for (const hint of uniqueHints) {
+          if (!setContext.includes(hint)) {
+            violations.push({
+              sceneId: sid,
+              field: "set_id",
+              rule: "set-location-mismatch",
+              message: `Scene mentions "${hint}" (in title/narration) but assigned set "${assignedSet.name}" doesn't reference this location. Consider creating a dedicated set or reassigning.`,
+              severity: "warning",
+              autoFixed: false,
+            });
+            break;
+          }
+        }
+      }
     }
 
     // Rule: dialogue + narration mutual exclusivity

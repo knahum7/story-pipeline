@@ -98,6 +98,11 @@ RULES:
 - NO style or quality descriptors — those come from the style reference image.
 - Be SPECIFIC about distinguishing features: wall materials, floor type, lighting fixtures, furniture style, color scheme. These details anchor visual consistency across scenes.
 - Each distinct physical location in the story gets its own set. If a story moves between a kitchen, a porch, and a bar, create three sets.
+- COMPLETENESS IS CRITICAL — create sets for ALL locations where scenes visually take place, including:
+  (a) Flashback/memory locations — if a character remembers being in "Ivan's apartment", create a set for that apartment. The scene_image_prompt must describe the REMEMBERED location, not where the character is currently sitting while remembering.
+  (b) Transitional locations — taxis, streets, sidewalks, hallways. Even if only 1-2 scenes occur there, they need their own set so the background matches the narration.
+  (c) Aftermath/epilogue locations — hospitals, hotel rooms, bedrooms. If a scene's narration describes events AT a location, that location needs a set.
+  (d) NEVER reuse an unrelated set for a scene at a different location. If a story moves from a restaurant to a taxi to a bedroom, create three separate sets. Assigning the "restaurant" set to a taxi scene produces a restaurant background for a taxi scene — visually nonsensical.
 - Scenes at the same location but with different sub-areas (e.g., "front row of auditorium" vs. "center aisle of auditorium") share the SAME set — the scene_image_prompt handles the specific framing within the set.
 
 EXAMPLE:
@@ -222,7 +227,7 @@ CRITICAL SCENE RULES (ZERO TOLERANCE)
 
 8. SCENE COUNT — produce enough scenes to faithfully cover the ENTIRE story. Guideline: approximately 4-6 scenes per page of source material. A 15-page story should yield roughly 60-90 scenes. Do NOT summarize or skip sections. Every significant beat, dialogue exchange, transition, and moment must have its own scene. If in doubt, create MORE scenes rather than fewer.
 
-9. EVERY SCENE MUST HAVE A set_id — each scene MUST reference a valid set from the sets array. Scenes at the same physical location MUST share the same set_id. When the story moves to a new location, use a different set_id.
+9. EVERY SCENE MUST HAVE A set_id — each scene MUST reference a valid set from the sets array. Scenes at the same physical location MUST share the same set_id. When the story moves to a new location, use a different set_id. NEVER assign a scene to a set whose location doesn't match the scene's actual visual setting. A scene about events "in a taxi" or "at a hospital" MUST NOT use a restaurant or auditorium set — the set image becomes the scene background, so mismatched sets produce visually wrong results. If the right set doesn't exist, you forgot to create it — go back and add it to the sets array.
 
 10. SCENE CONTINUITY — when splitting a conversation or long passage into multiple scenes at the same location AND same camera angle, use the SAME set_id and COPY-PASTE the scene_image_prompt IDENTICALLY, character-for-character. Each prompt goes to a separate API call with no memory — even tiny wording changes produce a visually different background. If the camera angle genuinely changes within the same set (e.g. switching from a front-row view to a stage view), then a different scene_image_prompt is appropriate. But for alternating dialogue turns at the same spot, the background MUST be identical. NEVER write "Same...", "Similar...", "As before...".
 
