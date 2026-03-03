@@ -67,7 +67,9 @@ CREATE TABLE IF NOT EXISTS "public"."pipelines" (
     "story_char_count" integer,
     "pipeline_data" "jsonb" NOT NULL,
     "raw_json" "text",
-    "created_at" timestamp with time zone DEFAULT "now"()
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "movie_url" "text",
+    "movie_assembled_at" timestamp with time zone
 );
 
 

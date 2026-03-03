@@ -248,6 +248,17 @@ const translations: Record<string, TranslationEntry> = {
   open_in_editor: { en: "Open in Editor", tr: "Editörde Aç" },
   no_content: { en: "No dialogue or narration", tr: "Diyalog veya anlatı yok" },
   videos_count: { en: "videos", tr: "video" },
+  assemble_movie: { en: "Assemble Movie", tr: "Filmi Birleştir" },
+  assembling_movie: { en: "Assembling movie...", tr: "Film birleştiriliyor..." },
+  movie_ready: { en: "Movie Ready", tr: "Film Hazır" },
+  download_movie: { en: "Download Movie", tr: "Filmi İndir" },
+  reassemble_movie: { en: "Re-assemble", tr: "Yeniden Birleştir" },
+  movie_assemble_failed: { en: "Movie assembly failed", tr: "Film birleştirme başarısız" },
+  scenes_missing_videos: { en: "scene(s) still need videos", tr: "sahne hala video bekliyor" },
+
+  // Voice preview
+  preview_voice: { en: "Preview Voice", tr: "Sesi Dinle" },
+  voice_preview_failed: { en: "Voice preview failed", tr: "Ses önizleme başarısız" },
 
   // Style prompt errors
   style_prompt_save_failed: { en: "Failed to save style prompt", tr: "Stil komutu kaydedilemedi" },

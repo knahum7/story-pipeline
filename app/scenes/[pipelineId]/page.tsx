@@ -195,6 +195,9 @@ export default function ScenesPage() {
   const [pipelineProgress, setPipelineProgress] = useState({ current: 0, total: 0 });
   const pipelineCancelRef = useRef(false);
 
+  const [assemblingMovie, setAssemblingMovie] = useState(false);
+  const [movieUrl, setMovieUrl] = useState<string | null>(null);
+
   const overlayRef = useRef<HTMLDivElement>(null);
 
   const allCharacters = useMemo(() => pipeline?.characters || [], [pipeline]);
@@ -275,6 +278,7 @@ export default function ScenesPage() {
         const pipelineData = pData.pipeline_data as PipelineJSON;
         setPipeline(pipelineData);
         setStyleImageUrl(pipelineData?.style_image_url || "");
+        if (pData.movie_url) setMovieUrl(pData.movie_url);
 
         const prompts: Record<string, string> = {};
         const animPrompts: Record<string, string> = {};
@@ -877,6 +881,27 @@ export default function ScenesPage() {
     pipelineCancelRef.current = true;
   }, []);
 
+  const assembleMovie = useCallback(async () => {
+    setAssemblingMovie(true);
+    try {
+      const res = await fetch("/api/movie/assemble", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pipelineId }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: t("movie_assemble_failed") }));
+        throw new Error(err.error || t("movie_assemble_failed"));
+      }
+      const { movieUrl: url } = await res.json();
+      setMovieUrl(url);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : t("movie_assemble_failed"));
+    } finally {
+      setAssemblingMovie(false);
+    }
+  }, [pipelineId, t]);
+
   const deleteSceneImage = useCallback(
     async (id: string) => {
       if (!confirm(t("confirm_delete"))) return;
@@ -1432,6 +1457,44 @@ export default function ScenesPage() {
                   <Sparkles size={10} />
                   <span>{t("generate_all_videos")}</span>
                 </button>
+              </div>
+
+              {/* Movie Assembly */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[10px] text-parchment/30 uppercase tracking-wider font-semibold">{t("assemble_movie")}</span>
+                  {movieUrl && <Check size={10} className="text-emerald-400" />}
+                </div>
+                {movieUrl ? (
+                  <div className="space-y-2">
+                    <a
+                      href={movieUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[10px] bg-emerald-900/20 border border-emerald-800/30 text-emerald-400 hover:bg-emerald-900/30 transition-colors"
+                    >
+                      <Film size={10} />
+                      <span>{t("download_movie")}</span>
+                    </a>
+                    <button
+                      onClick={assembleMovie}
+                      disabled={assemblingMovie || progress.videos < progress.total}
+                      className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[10px] bg-parchment/5 border border-parchment/10 text-parchment/50 hover:bg-parchment/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {assemblingMovie ? <Loader2 size={10} className="animate-spin" /> : <RotateCcw size={10} />}
+                      <span>{t("reassemble_movie")}</span>
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={assembleMovie}
+                    disabled={assemblingMovie || progress.videos < progress.total}
+                    className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[10px] bg-emerald-900/20 border border-emerald-800/30 text-emerald-400 hover:bg-emerald-900/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {assemblingMovie ? <Loader2 size={10} className="animate-spin" /> : <Film size={10} />}
+                    <span>{assemblingMovie ? t("assembling_movie") : progress.videos < progress.total ? `${progress.total - progress.videos} ${t("scenes_missing_videos")}` : t("assemble_movie")}</span>
+                  </button>
+                )}
               </div>
             </div>
           </div>

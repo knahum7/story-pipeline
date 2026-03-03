@@ -3,6 +3,7 @@ export const IMAGE_EDIT_MODEL = "fal-ai/nano-banana-2/edit";
 export const VIDEO_AUDIO_MODEL = "fal-ai/ltx-2-19b/distilled/audio-to-video";
 export const VIDEO_IMAGE_MODEL = "fal-ai/ltx-2-19b/distilled/image-to-video";
 export const TTS_MODEL = "fal-ai/minimax/speech-2.8-turbo";
+export const MERGE_VIDEOS_MODEL = "fal-ai/ffmpeg-api/merge-videos";
 
 export const NARRATOR_VOICE_ID = "English_CaptivatingStoryteller";
 

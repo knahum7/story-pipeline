@@ -24,6 +24,8 @@ import {
   Save,
   Volume2,
   LayoutGrid,
+  Play,
+  Square,
 } from "lucide-react";
 import { useLanguage } from "@/lib/language-context";
 import { PipelineJSON, Character } from "@/types/pipeline";
@@ -70,6 +72,11 @@ export default function CharactersPage() {
 
   const [characterVoices, setCharacterVoices] = useState<Record<string, string>>({});
   const [voicesLoaded, setVoicesLoaded] = useState(false);
+
+  const [previewLoading, setPreviewLoading] = useState<string | null>(null);
+  const [playingVoice, setPlayingVoice] = useState<string | null>(null);
+  const voiceCacheRef = useRef<Map<string, string>>(new Map());
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [newCharName, setNewCharName] = useState("");
@@ -157,6 +164,15 @@ export default function CharactersPage() {
     load();
   }, [pipelineId]);
 
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+    };
+  }, []);
+
   const handleVoiceChange = useCallback(
     async (characterId: string, voiceId: string) => {
       setCharacterVoices((prev) => ({ ...prev, [characterId]: voiceId }));
@@ -171,6 +187,60 @@ export default function CharactersPage() {
       }
     },
     [pipelineId]
+  );
+
+  const stopPreview = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      audioRef.current = null;
+    }
+    setPlayingVoice(null);
+  }, []);
+
+  const previewVoice = useCallback(
+    async (voiceId: string, key: string) => {
+      if (playingVoice === key) {
+        stopPreview();
+        return;
+      }
+      stopPreview();
+
+      const cached = voiceCacheRef.current.get(voiceId);
+      if (cached) {
+        const audio = new Audio(cached);
+        audioRef.current = audio;
+        setPlayingVoice(key);
+        audio.onended = () => setPlayingVoice(null);
+        audio.onerror = () => setPlayingVoice(null);
+        audio.play().catch(() => setPlayingVoice(null));
+        return;
+      }
+
+      setPreviewLoading(key);
+      try {
+        const res = await fetch("/api/voice-preview", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ voiceId }),
+        });
+        if (!res.ok) throw new Error("Preview failed");
+        const { audioUrl } = await res.json();
+        voiceCacheRef.current.set(voiceId, audioUrl);
+
+        const audio = new Audio(audioUrl);
+        audioRef.current = audio;
+        setPlayingVoice(key);
+        audio.onended = () => setPlayingVoice(null);
+        audio.onerror = () => setPlayingVoice(null);
+        audio.play().catch(() => setPlayingVoice(null));
+      } catch {
+        alert(t("voice_preview_failed"));
+      } finally {
+        setPreviewLoading(null);
+      }
+    },
+    [playingVoice, stopPreview, t],
   );
 
   const generateImage = useCallback(
@@ -715,27 +785,47 @@ export default function CharactersPage() {
               </p>
             </div>
             <div className="p-6">
-              <select
-                value={characterVoices["__narrator__"] || NARRATOR_VOICE_ID}
-                onChange={(e) => handleVoiceChange("__narrator__", e.target.value)}
-                className="w-full bg-ink/60 border border-cyan-800/30 rounded-lg px-3 py-2 text-[11px] text-parchment/70 font-mono focus:outline-none focus:border-cyan-600/50 transition-colors appearance-none cursor-pointer"
-                style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2388ccdd' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: "no-repeat", backgroundPosition: "right 10px center" }}
-              >
-                <optgroup label="Female Voices">
-                  {FEMALE_VOICES.map((v) => (
-                    <option key={v} value={v}>
-                      {v.replace(/^English_/, "").replace(/([A-Z])/g, " $1").replace(/[-_]/g, " ").trim()}
-                    </option>
-                  ))}
-                </optgroup>
-                <optgroup label="Male Voices">
-                  {MALE_VOICES.map((v) => (
-                    <option key={v} value={v}>
-                      {v.replace(/^English_/, "").replace(/([A-Z])/g, " $1").replace(/[-_]/g, " ").trim()}
-                    </option>
-                  ))}
-                </optgroup>
-              </select>
+              <div className="flex items-center gap-2">
+                <select
+                  value={characterVoices["__narrator__"] || NARRATOR_VOICE_ID}
+                  onChange={(e) => handleVoiceChange("__narrator__", e.target.value)}
+                  className="flex-1 bg-ink/60 border border-cyan-800/30 rounded-lg px-3 py-2 text-[11px] text-parchment/70 font-mono focus:outline-none focus:border-cyan-600/50 transition-colors appearance-none cursor-pointer"
+                  style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2388ccdd' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: "no-repeat", backgroundPosition: "right 10px center" }}
+                >
+                  <optgroup label="Female Voices">
+                    {FEMALE_VOICES.map((v) => (
+                      <option key={v} value={v}>
+                        {v.replace(/^English_/, "").replace(/([A-Z])/g, " $1").replace(/[-_]/g, " ").trim()}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Male Voices">
+                    {MALE_VOICES.map((v) => (
+                      <option key={v} value={v}>
+                        {v.replace(/^English_/, "").replace(/([A-Z])/g, " $1").replace(/[-_]/g, " ").trim()}
+                      </option>
+                    ))}
+                  </optgroup>
+                </select>
+                <button
+                  onClick={() => previewVoice(characterVoices["__narrator__"] || NARRATOR_VOICE_ID, "__narrator__")}
+                  disabled={previewLoading === "__narrator__"}
+                  className={`shrink-0 p-2 rounded-lg border transition-colors ${
+                    playingVoice === "__narrator__"
+                      ? "bg-cyan-900/30 border-cyan-700/50 text-cyan-400"
+                      : "bg-ink/60 border-cyan-800/30 text-parchment/40 hover:text-cyan-400 hover:border-cyan-700/40"
+                  } disabled:opacity-50 disabled:cursor-not-allowed`}
+                  title={t("preview_voice")}
+                >
+                  {previewLoading === "__narrator__" ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : playingVoice === "__narrator__" ? (
+                    <Square size={14} />
+                  ) : (
+                    <Play size={14} />
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -912,27 +1002,47 @@ export default function CharactersPage() {
                           Voice
                         </span>
                       </div>
-                      <select
-                        value={characterVoices[char.id] || ""}
-                        onChange={(e) => handleVoiceChange(char.id, e.target.value)}
-                        className="w-full bg-ink/60 border border-cyan-800/30 rounded-lg px-3 py-2 text-[11px] text-parchment/70 font-mono focus:outline-none focus:border-cyan-600/50 transition-colors appearance-none cursor-pointer"
-                        style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2388ccdd' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: "no-repeat", backgroundPosition: "right 10px center" }}
-                      >
-                        <optgroup label="Female Voices">
-                          {FEMALE_VOICES.map((v) => (
-                            <option key={v} value={v}>
-                              {v.replace(/^English_/, "").replace(/([A-Z])/g, " $1").replace(/[-_]/g, " ").trim()}
-                            </option>
-                          ))}
-                        </optgroup>
-                        <optgroup label="Male Voices">
-                          {MALE_VOICES.map((v) => (
-                            <option key={v} value={v}>
-                              {v.replace(/^English_/, "").replace(/([A-Z])/g, " $1").replace(/[-_]/g, " ").trim()}
-                            </option>
-                          ))}
-                        </optgroup>
-                      </select>
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={characterVoices[char.id] || ""}
+                          onChange={(e) => handleVoiceChange(char.id, e.target.value)}
+                          className="flex-1 bg-ink/60 border border-cyan-800/30 rounded-lg px-3 py-2 text-[11px] text-parchment/70 font-mono focus:outline-none focus:border-cyan-600/50 transition-colors appearance-none cursor-pointer"
+                          style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2388ccdd' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: "no-repeat", backgroundPosition: "right 10px center" }}
+                        >
+                          <optgroup label="Female Voices">
+                            {FEMALE_VOICES.map((v) => (
+                              <option key={v} value={v}>
+                                {v.replace(/^English_/, "").replace(/([A-Z])/g, " $1").replace(/[-_]/g, " ").trim()}
+                              </option>
+                            ))}
+                          </optgroup>
+                          <optgroup label="Male Voices">
+                            {MALE_VOICES.map((v) => (
+                              <option key={v} value={v}>
+                                {v.replace(/^English_/, "").replace(/([A-Z])/g, " $1").replace(/[-_]/g, " ").trim()}
+                              </option>
+                            ))}
+                          </optgroup>
+                        </select>
+                        <button
+                          onClick={() => previewVoice(characterVoices[char.id] || "", `char_${char.id}`)}
+                          disabled={previewLoading === `char_${char.id}` || !characterVoices[char.id]}
+                          className={`shrink-0 p-2 rounded-lg border transition-colors ${
+                            playingVoice === `char_${char.id}`
+                              ? "bg-cyan-900/30 border-cyan-700/50 text-cyan-400"
+                              : "bg-ink/60 border-cyan-800/30 text-parchment/40 hover:text-cyan-400 hover:border-cyan-700/40"
+                          } disabled:opacity-50 disabled:cursor-not-allowed`}
+                          title={t("preview_voice")}
+                        >
+                          {previewLoading === `char_${char.id}` ? (
+                            <Loader2 size={14} className="animate-spin" />
+                          ) : playingVoice === `char_${char.id}` ? (
+                            <Square size={14} />
+                          ) : (
+                            <Play size={14} />
+                          )}
+                        </button>
+                      </div>
                     </div>
                   )}
 
