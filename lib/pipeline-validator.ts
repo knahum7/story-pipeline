@@ -58,7 +58,7 @@ const SUGGESTIVE_MINOR_PATTERNS: [RegExp, string][] = [
   [/\bdrunk\b/i, ""],
 ];
 
-const PEOPLE_WORDS_REGEX = /\b(audience members?|attendees?|well-?wishers?|servers?|waiters?|waitress(?:es)?|patrons?|pedestrians?|passersby|bystanders?|crowd(?:ed|s)?|people|figures?|silhouettes?|strangers?|onlookers?|spectators?|visitors?|guests?|theatergoers?|theater people|professionals?|actors?|diners?|shoppers?|commuters?|couples?|families|children|men|women|students?'?s?|workers?'?s?|dancers?'?s?|musicians?'?s?|singers?'?s?|performers?'?s?)\b/i;
+const PEOPLE_WORDS_REGEX = /\b(audience members?|attendees?|well-?wishers?|servers?|waiters?|waitress(?:es)?|patrons?|pedestrians?|passersby|bystanders?|crowd(?:ed|s)?|people|figures?|silhouettes?|strangers?|onlookers?|spectators?|visitors?|guests?|theatergoers?|theater people|professionals?|actors?|diners?|shoppers?|commuters?|couples?|families|children|men|women|girls?|boys?|students?'?s?|workers?'?s?|dancers?'?s?|musicians?'?s?|singers?'?s?|performers?'?s?)\b/i;
 
 const PEOPLE_WORD_REPLACEMENTS: [RegExp, string][] = [
   [/\bcrowded\b/gi, "densely furnished"],
@@ -93,6 +93,8 @@ const PEOPLE_WORD_REPLACEMENTS: [RegExp, string][] = [
   [/\bchildren\b/gi, ""],
   [/\bmen\b/gi, ""],
   [/\bwomen\b/gi, ""],
+  [/\bgirls?\b/gi, ""],
+  [/\bboys?\b/gi, ""],
   [/\bstudents?'?s?\b/gi, ""],
   [/\bworkers?'?s?\b/gi, ""],
   [/\bdancers?'?s?\b/gi, ""],
@@ -107,7 +109,21 @@ function stripPeopleWords(text: string): string {
   for (const [pattern, replacement] of PEOPLE_WORD_REPLACEMENTS) {
     result = result.replace(pattern, replacement);
   }
-  return result.replace(/\s{2,}/g, " ").replace(/,\s*,/g, ",").replace(/,\s*\./g, ".").trim();
+  result = result
+    .replace(/\s{2,}/g, " ")
+    .replace(/,\s*,/g, ",")
+    .replace(/,\s*\./g, ".")
+    // Dangling prepositions / articles left after stripping (e.g. "with thinning ," → "thinning ,")
+    .replace(/\b(with|for|of|by|to|a|an|the)\s*[,;]/gi, ",")
+    // "performing for each other" → trailing "for each other" with no subject
+    .replace(/\bfor each other\b/gi, "")
+    // Leading commas, trailing commas before period, repeated commas
+    .replace(/^[,\s]+/, "")
+    .replace(/,\s*,/g, ",")
+    .replace(/,\s*\./g, ".")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  return result;
 }
 
 const LOCATION_HINT_WORDS = [
@@ -668,6 +684,35 @@ export function validatePipeline(pipeline: PipelineJSON): ValidationResult {
       });
     }
 
+    // ── Content safety for minors in animation_prompt ──
+    const sceneHasMinor = scene.characters.some((cid) => {
+      const ch = fixed.characters.find((c) => c.id === cid);
+      return ch && MINOR_AGE_PATTERN.test(ch.image_generation_prompt);
+    });
+    if (sceneHasMinor) {
+      for (const [pattern, replacement] of SUGGESTIVE_MINOR_PATTERNS) {
+        const match = scene.animation_prompt.match(pattern);
+        if (match) {
+          const original = match[0];
+          if (replacement) {
+            fixed.scenes[i].animation_prompt =
+              fixed.scenes[i].animation_prompt.replace(pattern, replacement);
+          } else {
+            fixed.scenes[i].animation_prompt =
+              fixed.scenes[i].animation_prompt.replace(pattern, "").replace(/\s{2,}/g, " ").trim();
+          }
+          violations.push({
+            sceneId: sid,
+            field: "animation_prompt",
+            rule: "minor-content-safety",
+            message: `Scene with minor character had suggestive detail "${original}" in animation_prompt — ${replacement ? `replaced with "${replacement}"` : "removed"}.`,
+            severity: "error",
+            autoFixed: true,
+          });
+        }
+      }
+    }
+
     // ── animation_prompt checks ──
 
     // Rule: POSITIONS/MOTION/CAMERA labels
@@ -890,6 +935,57 @@ export function validatePipeline(pipeline: PipelineJSON): ValidationResult {
       severity: "warning",
       autoFixed: true,
     });
+  }
+
+  // ── Detect LLM pre-split dialogue scenes and assign dialogue_group ──
+  // If the LLM pre-split multi-speaker dialogue (IDs like scene_05a, scene_05b),
+  // the auto-split above won't trigger. Detect the pattern and assign dialogue_group
+  // so these scenes share a composite image.
+  {
+    const PRE_SPLIT_PATTERN = /^(.+?)([a-z])$/;
+    let gi = 0;
+    while (gi < fixed.scenes.length) {
+      const scene = fixed.scenes[gi];
+      if (scene.dialogue_group) { gi++; continue; }
+
+      const match = scene.id.match(PRE_SPLIT_PATTERN);
+      if (!match || match[2] !== "a") { gi++; continue; }
+
+      const baseId = match[1];
+      let groupEnd = gi + 1;
+      while (groupEnd < fixed.scenes.length) {
+        const next = fixed.scenes[groupEnd];
+        const nextMatch = next.id.match(PRE_SPLIT_PATTERN);
+        if (!nextMatch || nextMatch[1] !== baseId) break;
+        groupEnd++;
+      }
+
+      const groupLen = groupEnd - gi;
+      if (groupLen < 2) { gi++; continue; }
+
+      const allSingleSpeaker = fixed.scenes.slice(gi, groupEnd).every(
+        (s) => s.dialogue && s.dialogue.length > 0 && new Set(s.dialogue.map((d) => d.character)).size === 1,
+      );
+      const allSameSet = fixed.scenes.slice(gi, groupEnd).every(
+        (s) => s.set_id === scene.set_id,
+      );
+
+      if (allSingleSpeaker && allSameSet) {
+        for (let k = gi; k < groupEnd; k++) {
+          fixed.scenes[k].dialogue_group = baseId;
+        }
+        violations.push({
+          sceneId: baseId,
+          field: "dialogue_group",
+          rule: "presplit-detected",
+          message: `Detected ${groupLen} LLM pre-split dialogue scenes (${fixed.scenes.slice(gi, groupEnd).map((s) => s.id).join(", ")}) — assigned dialogue_group "${baseId}" for shared composite.`,
+          severity: "warning",
+          autoFixed: true,
+        });
+      }
+
+      gi = groupEnd;
+    }
   }
 
   // ── Assign background_group for consecutive same-set, same-prompt scenes ──

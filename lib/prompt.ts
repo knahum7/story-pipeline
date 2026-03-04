@@ -7,7 +7,7 @@ PIPELINE OVERVIEW — understand what happens to each field you produce:
 4. scene_image_prompt → generates a SCENE BACKGROUND IMAGE via image-to-image (Nano Banana 2 Edit) using the SET IMAGE as reference (NOT the style image directly). This is a specific camera angle/framing within the set, with NO people in it.
 5. The scene background + character portraits are COMPOSITED together into a single frame via image-to-image (Nano Banana 2 Edit). The STARTING POSITIONS section of animation_prompt tells the compositor where to place each character.
 6. dialogue lines or narration text → converted to AUDIO via text-to-speech (MiniMax TTS). Each character gets a distinct voice. Narration uses a separate narrator voice. This audio determines the video duration.
-7. animation_prompt → drives VIDEO GENERATION from the composited frame via LTX-2 Audio-to-Video. The audio (dialogue or narration) is baked into the video. For dialogue scenes, the model syncs lip movement to speech. For narration scenes, the model produces ambient motion ONLY — the prompt MUST say "No characters are speaking." or the model will hallucinate lip movements.
+7. animation_prompt → drives VIDEO GENERATION from the composited frame via LTX-2 Audio-to-Video. The audio (dialogue or narration) is baked into the video. For dialogue scenes, the model syncs lip movement to speech — describe the speaking character's body language and include "lips moving" to guide lip-sync. For narration scenes, the model produces ambient motion ONLY — the prompt MUST say "No characters are speaking." or the model will hallucinate lip movements.
 
 GLOBAL RULES:
 1. NEVER summarize vaguely. Always extract specific visual details from the text.
@@ -62,9 +62,10 @@ Each character object:
 
 CRITICAL — the portrait is used in TWO ways: (a) displayed standalone, and (b) used as a REFERENCE IMAGE when compositing the character into scene backgrounds. Therefore:
 
-FORMAT: "[Full name], [age/build], [hair: color, length, style], [face: complexion, features], [clothing: specific garments, colors, textures], [expression/emotion], [pose: upper body or three-quarter view], neutral blurred background, soft studio lighting"
+FORMAT: "[Full name], [gender: woman/man/girl/boy], [age/build], [hair: color, length, style], [face: complexion, features], [clothing: specific garments, colors, textures], [expression/emotion], [pose: upper body or three-quarter view], neutral blurred background, soft studio lighting"
 
 RULES:
+- ALWAYS include an explicit gender word (woman, man, girl, boy) immediately after the character's name. This is used downstream for voice assignment and video prompt generation. Without it, the pipeline cannot determine the character's gender.
 - ALWAYS specify "neutral blurred background" or "simple gradient background" — a busy background will bleed into composites and ruin scene images.
 - Upper body or three-quarter view, facing forward or slightly angled — the character must be clearly identifiable and compositable.
 - ONLY VISUAL details. No smells, sounds, textures-by-touch, or backstory. The image model renders pixels, nothing else.
@@ -75,7 +76,7 @@ CONTENT SAFETY: If a character is a minor (under 18), NEVER describe them with s
 
 WHO TO INCLUDE: Create character entries ONLY for characters who have dialogue lines OR who physically appear in scenes. Minor characters who are only mentioned in passing (e.g. a boss described in narration but never seen/speaking) should NOT get a character entry — describe them directly in the animation_prompt when they appear. If a minor character has even ONE dialogue line, they MUST have a character entry so the line can be attributed.
 
-EXAMPLE: "Christine Mooney, mid-30s slender build, blonde shoulder-length hair with soft waves, fair complexion with refined features, elegant black cocktail dress with thin straps, four-inch pencil-thin high heels, contemplative expression with underlying vulnerability, three-quarter view standing pose, neutral blurred background, soft warm studio lighting"
+EXAMPLE: "Christine Mooney, woman, mid-30s slender build, blonde shoulder-length hair with soft waves, fair complexion with refined features, elegant black cocktail dress with thin straps, four-inch pencil-thin high heels, contemplative expression with underlying vulnerability, three-quarter view standing pose, neutral blurred background, soft warm studio lighting"
 
 ─────────────────────────────────────────────
 SETS array
@@ -161,6 +162,7 @@ FOR ALL SCENES — FULL NAME REQUIREMENT:
 
 FOR DIALOGUE SCENES (dialogue array is non-empty):
 - In MOTION, describe the speaking character's gestures, facial expressions, and body language while talking. Include "lips moving" or "speaking" for the character who has dialogue. Other characters remain mostly still or react subtly.
+- IMPORTANT: Describe FULL BODY or UPPER BODY motion — never just the face. The video model must maintain the composited scene framing. Always mention what the character's hands, posture, or body are doing in addition to facial expression.
 
 FOR NARRATION SCENES (narration is non-empty, dialogue is empty):
 - The narration audio plays as voiceover. The video model WILL attempt lip-sync on any character it thinks is speaking. To prevent this:
@@ -174,7 +176,7 @@ FOR EMPTY SCENES (no characters, narration only):
 
 EXAMPLE (dialogue):
 "POSITIONS: Christine stands center-frame at the kitchen counter, looking down at an empty glass. Alexi leans against the doorframe in the background, arms crossed.
-MOTION: Christine raises her gaze slowly, expression shifting from sadness to quiet resolve, lips moving as she speaks. Alexi remains still, watching.
+MOTION: Christine raises her gaze slowly, hands gripping the counter edge, expression shifting from sadness to quiet resolve, lips moving as she speaks. Alexi remains still, watching with folded arms.
 CAMERA: Static with subtle handheld drift."
 
 EXAMPLE (narration with characters):
@@ -218,7 +220,7 @@ CRITICAL SCENE RULES (ZERO TOLERANCE)
 
 5. animation_prompt MUST use the labeled POSITIONS/MOTION/CAMERA format. No exceptions. Flowing prose without these labels will break the compositing pipeline.
 
-6. NARRATION SCENES: The MOTION section MUST begin with the exact sentence "No characters are speaking." — this is a technical instruction to the video model, not a creative choice. Without it, the model generates random lip movements on character faces. EVERY narration scene needs this, even when characters are visible in the frame. Place it ONLY inside the MOTION section, NEVER before POSITIONS or anywhere else in the prompt.
+6. NARRATION SCENES: The MOTION section MUST begin with the exact sentence "No characters are speaking." — this is a technical instruction to the video model, not a creative choice. Without it, the model generates random lip movements on character faces. EVERY narration scene needs this, even when characters are visible in the frame. Place it ONLY inside the MOTION section, NEVER before POSITIONS or anywhere else in the prompt. DIALOGUE SCENES must NOT use this prefix — they should include "lips moving" for the speaking character instead.
 
 7. KEEP TEXT SHORT for TTS — dialogue under 35 words, narration under 40 words per scene. If longer, split into multiple scenes. Video quality degrades with duration.
 

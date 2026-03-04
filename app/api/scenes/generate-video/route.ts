@@ -5,7 +5,6 @@ import { VIDEO_AUDIO_MODEL, VIDEO_IMAGE_MODEL } from "@/lib/fal-models";
 
 export const maxDuration = 800;
 
-// Visual quality negatives shared by all scene types
 const BASE_NEGATIVE = [
   "subtitles, captions, text overlay, watermark, title cards, burned-in text, on-screen text, credits",
   "blurry, out of focus, overexposed, underexposed, low contrast, washed out colors",
@@ -21,14 +20,20 @@ const BASE_NEGATIVE = [
   "cinematic oversaturation, stylized filters, AI artifacts",
 ].join(", ");
 
-// Dialogue scenes: encourage lip sync — only negate quality issues, not speech itself
-const DIALOGUE_NEGATIVE = BASE_NEGATIVE;
+// Dialogue: allow lip sync but strongly prevent face close-ups
+const DIALOGUE_NEGATIVE = [
+  BASE_NEGATIVE,
+  "face closeup, extreme closeup, head shot, face zoom, tight face crop, portrait framing",
+  "camera zoom to face, face filling frame, cropped head, chin-up framing",
+  "off-sync audio, incorrect dialogue, added dialogue, repetitive speech",
+].join(", ");
 
-// Narration/silent scenes: suppress all lip movement and unwanted speech
+// Narration/silent: suppress all lip movement
 const NARRATION_NEGATIVE = [
   BASE_NEGATIVE,
   "lip sync, lip movement, mouth movement, talking, speaking, moving lips",
   "off-sync audio, incorrect dialogue, added dialogue, repetitive speech",
+  "face closeup, extreme closeup, head shot, face zoom",
 ].join(", ");
 
 function isNarrationPrompt(prompt: string): boolean {

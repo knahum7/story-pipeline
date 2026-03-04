@@ -77,6 +77,11 @@ function replaceNameWithDescriptor(
  * Transform a structured POSITIONS/MOTION/CAMERA animation prompt into a
  * natural-language video prompt suitable for LTX-2, and extract the
  * appropriate camera_lora value.
+ *
+ * Dialogue scenes: lip-sync is allowed so the prompt preserves speaking
+ * language. "No characters are speaking." is NOT prepended.
+ * Narration scenes: "No characters are speaking." IS prepended and speech
+ * trigger words are stripped.
  */
 export function transformToVideoPrompt(
   animationPrompt: string,
@@ -125,13 +130,13 @@ export function transformToVideoPrompt(
 
   let prompt: string;
   if (isDialogue) {
+    // Dialogue: keep motion text as-is (lip-sync allowed, face closeup blocked via negative prompt)
+    prompt = motionText;
+  } else {
+    // Narration: always prepend "No characters are speaking."
     prompt = noSpeaking
       ? `No characters are speaking. ${motionText}`
-      : motionText;
-  } else if (noSpeaking) {
-    prompt = `No characters are speaking. ${motionText}`;
-  } else {
-    prompt = motionText;
+      : `No characters are speaking. ${motionText}`;
   }
 
   prompt = prompt.trim().replace(/\s{2,}/g, " ");
